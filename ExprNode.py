@@ -64,7 +64,15 @@ class FunctionNode(ExprNode):
     def __init__(self, func_type, children):
         self.func_type = func_type
         self.children = children
-        self.width = self.children[0].width
+
+        # Sanity checks
+        if self.func_type == FunctionEnum.EQUALS:
+            self.width = 1
+        elif self.func_type in two_operand_mapping:
+            assert self.children[0].width == self.children[1].width
+            self.width = self.children[0].width
+        else:
+            self.width = self.children[0].width
 
     def __str__(self):
         if self.func_type in two_operand_mapping:

@@ -23,6 +23,8 @@ def PropOr(a, b):
 def PropNot(a):
 	if isinstance(a, PropConstant):
 		return PropConstant(a.v ^ 1)
+	if isinstance(a, PropFunction) and a.op == PropEnum.NOT:
+		return a.left
 	return PropFunction(PropEnum.NOT, a, None)
 
 def PropIff(a, b):
