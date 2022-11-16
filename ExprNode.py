@@ -1,4 +1,3 @@
-from typing import List
 from enum import Enum
 
 class NodeType(Enum):
@@ -65,6 +64,8 @@ class FunctionNode(ExprNode):
     def __init__(self, func_type, children):
         self.func_type = func_type
         self.children = children
+        self.width = self.children[0].width
+
     def __str__(self):
         if self.func_type in two_operand_mapping:
             return "({} {} {})".format(self.children[0], two_operand_mapping[self.func_type], self.children[1])
@@ -83,30 +84,38 @@ class VariableNode(ExprNode):
         self.width = width
     def __str__(self):
         return "{}:{}".format(self.name, self.width)
+    def __repr__(self):
+        return str(self)
+    def __hash__(self):
+        return hash((self.name, self.width))
+    def __eq__(self, other):
+        return self.name == other.name and self.width == other.width
 
 class ConstantNode(ExprNode):
     def __init__(self, value, width):
-        self.value = value
+        self.value = value & ((1 << width) - 1)
         self.width = width
     def __str__(self):
-        return "{}:{}".format(self.value, self.width)
+        return "{}:{}".format(bin(self.value)[2:].zfill(self.width), self.width)
+    def __repr__(self):
+        return str(self)
 
 # Helper Functions that use z3-like API
 def BitVec(name, width):
     return VariableNode(name, width)
 def BitVecVal(value, width):
     return ConstantNode(value, width)
-def AND(a, b):
+def And(a, b):
     return FunctionNode(FunctionEnum.AND, [a, b])
-def OR(a, b):
+def Or(a, b):
     return FunctionNode(FunctionEnum.OR, [a, b])
-def NOT(a):
+def Not(a):
     return FunctionNode(FunctionEnum.NOT, [a])
-def EXTRACT(a, i, j):
+def Extract(a, i, j):
     if type(i) is not ConstantNode or type(j) is not ConstantNode:
         raise Exception("Extract on non-constant indices not supported")
     return FunctionNode(FunctionEnum.EXTRACT, [a, i, j])
-def CONCAT(a, b):
+def Concat(a, b):
     return FunctionNode(FunctionEnum.CONCAT, [a, b])
 
 # ((A ^ B) + C) || (D + E)
@@ -119,8 +128,9 @@ def CONCAT(a, b):
 #Example:
 #(A ^ B) + C == 3
 
-a = BitVec("A", 5)
-b = BitVec("B", 5)
-c = BitVec("C", 5)
-e = ((a ^ b) + c) == BitVecVal(3, 5)
-print(e)
+if __name__ == "__main__":
+    a = BitVec("A", 5)
+    b = BitVec("B", 5)
+    c = BitVec("C", 5)
+    e = ((a ^ b) + c) == BitVecVal(3, 5)
+    print(e)
