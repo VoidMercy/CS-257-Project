@@ -68,6 +68,10 @@ class FunctionNode(ExprNode):
         # Sanity checks
         if self.func_type == FunctionEnum.EQUALS:
             self.width = 1
+        elif self.func_type == FunctionEnum.EXTRACT:
+            self.width = children[1] - children[2] + 1
+        elif self.func_type == FunctionEnum.CONCAT:
+            self.width = self.children[0].width + self.children[1].width
         elif self.func_type in two_operand_mapping:
             assert self.children[0].width == self.children[1].width
             self.width = self.children[0].width
@@ -120,8 +124,10 @@ def Or(a, b):
 def Not(a):
     return FunctionNode(FunctionEnum.NOT, [a])
 def Extract(a, i, j):
-    if type(i) is not ConstantNode or type(j) is not ConstantNode:
+    if type(i) is not int or type(j) is not int:
         raise Exception("Extract on non-constant indices not supported")
+    if i < 0 or i >= a.width or j < 0 or j >= a.width:
+        raise Exception("Indices out of range")
     return FunctionNode(FunctionEnum.EXTRACT, [a, i, j])
 def Concat(a, b):
     return FunctionNode(FunctionEnum.CONCAT, [a, b])

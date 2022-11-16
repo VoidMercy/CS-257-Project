@@ -46,6 +46,7 @@ class Solver:
 				variables                                     = left_variables + right_variables
 				equation                                      = PropAnd(left_equation, right_equation)
 
+
 				eq_var = PropVariable("v{}".format(v_idx + len(variables)))
 				eq_equation = PropConstant(1)
 				for i in range(node.children[0].width):
@@ -95,6 +96,21 @@ class Solver:
 				for i in range(node.children[0].width):
 					equation = PropAnd(equation, PropIff(new_variables[i], PropNot(left_vector[i])))
 				return new_variables, equation, variables + new_variables
+
+			elif node.func_type == FunctionEnum.EXTRACT:
+				left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
+				variables                                     = left_variables
+				equation                                      = left_equation
+
+				return left_vector[len(left_vector)-node.children[1]-1:len(left_vector)-node.children[2]], equation, variables
+
+			elif node.func_type == FunctionEnum.CONCAT:
+				left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
+				right_vector, right_equation, right_variables = self.BitBlast(node.children[1], v_idx + len(left_variables))
+				variables                                     = left_variables + right_variables
+				equation                                      = PropAnd(left_equation, right_equation)
+
+				return left_vector + right_vector, equation, variables
 
 		raise Exception("Unsupported OP", node.func_type)
 
@@ -169,4 +185,17 @@ left = a & BitVecVal(0b11111, 5) == BitVecVal(0b00000, 5)
 s.add(Not(left))
 model = s.solve()
 print("Model:", model, "\n")
+
+s = Solver()
+left = Extract(a, 2, 0) == BitVecVal(0b101, 3)
+right = Extract(a, 4, 3) == BitVecVal(0b01, 2)
+s.add(And(left, right))
+model = s.solve()
+print("Model:", model, "\n")
+
+s = Solver()
+s.add(Concat(a, b) == BitVecVal(0b1100110010, 10))
+model = s.solve()
+print("Model:", model, "\n")
+
 
