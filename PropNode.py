@@ -1,5 +1,6 @@
 from enum import Enum
 import z3
+from functools import reduce
 
 def PropAnd(a, b):
 	# Optimizations
@@ -33,6 +34,10 @@ def PropXor(a, b):
 	return PropOr(PropAnd(PropNot(a), b), PropAnd(a, PropNot(b)))
 def PropMux(choose, a, b):
 	return PropOr(PropAnd(choose, a), PropAnd(PropNot(choose), b))
+def PropFullAdder(a, b, cin):
+	s    = reduce(PropXor, [a, b, cin])
+	cout = reduce(PropOr, [PropAnd(a, b), PropAnd(a, cin), PropAnd(b, cin)])
+	return s, cout
 
 class PropEnum(Enum):
     AND = 0

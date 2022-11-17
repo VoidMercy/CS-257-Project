@@ -94,8 +94,8 @@ class Solver:
 				left_vector, right_vector = left_vector[::-1], right_vector[::-1]
 				equation = PropAnd(equation, PropNot(carries[0]))
 				for i in range(node.children[0].width):
-					equation = PropAnd(equation, PropIff(carries[i + 1], reduce(PropOr, [PropAnd(left_vector[i], right_vector[i]), PropAnd(left_vector[i], carries[i]), PropAnd(right_vector[i], carries[i])])))
-					equation = PropAnd(equation, PropIff(new_variables[i], reduce(PropXor, [left_vector[i], right_vector[i], carries[i]])))
+					s, cout = PropFullAdder(left_vector[i], right_vector[i], carries[i])
+					equation = PropAnd(equation, PropAnd(PropIff(new_variables[i], s), PropIff(carries[i + 1], cout)))
 				return new_variables[::-1], equation, variables + new_variables + carries
 
 			elif node.func_type == FunctionEnum.SUBTRACT:
