@@ -21,6 +21,10 @@ class FunctionEnum(Enum):
     EXTRACT = 12
     CONCAT = 13
     EQUALS = 14
+    LT = 15
+    GT = 16
+    LEQ = 17
+    GEQ = 18
 
 two_operand_mapping = {
     FunctionEnum.AND : "&&",
@@ -34,7 +38,11 @@ two_operand_mapping = {
     FunctionEnum.ADD : "+",
     FunctionEnum.MULTIPLY : "*",
     FunctionEnum.EQUALS : "==",
-    FunctionEnum.CONCAT : "CONCAT"
+    FunctionEnum.CONCAT : "CONCAT",
+    FunctionEnum.LT : "<",
+    FunctionEnum.GT : ">",
+    FunctionEnum.LEQ : "<=",
+    FunctionEnum.GEQ : ">="
 }
 
 class ExprNode:

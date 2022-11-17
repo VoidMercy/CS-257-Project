@@ -1,9 +1,12 @@
 import z3
+import sys
 import math
 from ExprNode import *
 from PropNode import *
 from typing import List, Tuple
 from functools import reduce
+
+sys.setrecursionlimit(200000)
 
 class Solver:
 	def __init__(self):
@@ -123,7 +126,6 @@ class Solver:
 				partial_products = []
 				for i in range(node.width):
 					partial_products.append([PropConstant(0) for _ in range(i)] + [PropAnd(j, right_vector[i]) for j in left_vector[:node.width - i]])
-				print(partial_products)
 				while len(partial_products) > 1:
 					a, b = partial_products.pop(), partial_products.pop()
 					new_sum = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.width)]
@@ -133,7 +135,6 @@ class Solver:
 						s, cout = PropFullAdder(a[i], b[i], carries[i])
 						equation = PropAnd(equation, PropAnd(PropIff(new_sum[i], s), PropIff(carries[i + 1], cout)))
 					partial_products = [new_sum] + partial_products
-				# Sum partial products
 				return partial_products[0][::-1], equation, variables
 
 		raise Exception("Unsupported OP", node.func_type)
@@ -241,5 +242,11 @@ print("Model:", model, "\n")
 
 s = Solver()
 s.add((a >> BitVecVal(0b00100, 5)) == BitVecVal(0b00001, 5))
+model = s.solve()
+print("Model:", model, "\n")
+
+s = Solver()
+a = BitVec("A", 32)
+s.add(a * a == BitVecVal(169, 32))
 model = s.solve()
 print("Model:", model, "\n")
