@@ -33,12 +33,13 @@ two_operand_mapping = {
     FunctionEnum.SUBTRACT : "-",
     FunctionEnum.ADD : "+",
     FunctionEnum.MULTIPLY : "*",
-    FunctionEnum.EQUALS : "=="
+    FunctionEnum.EQUALS : "==",
+    FunctionEnum.CONCAT : "CONCAT"
 }
 
 class ExprNode:
     def __init__(self):
-        pass
+        self.width = None
     def __and__(self, other):
         return FunctionNode(FunctionEnum.BITWISE_AND, [self, other])
     def __invert__(self):
@@ -65,7 +66,6 @@ class FunctionNode(ExprNode):
         self.func_type = func_type
         self.children = children
 
-        # Sanity checks
         if self.func_type == FunctionEnum.EQUALS:
             self.width = 1
         elif self.func_type == FunctionEnum.EXTRACT:
@@ -100,8 +100,6 @@ class VariableNode(ExprNode):
         return str(self)
     def __hash__(self):
         return hash((self.name, self.width))
-    def __eq__(self, other):
-        return self.name == other.name and self.width == other.width
 
 class ConstantNode(ExprNode):
     def __init__(self, value, width):

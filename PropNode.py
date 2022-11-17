@@ -31,6 +31,8 @@ def PropIff(a, b):
 	return PropOr(PropAnd(a, b), PropAnd(PropNot(a), PropNot(b)))
 def PropXor(a, b):
 	return PropOr(PropAnd(PropNot(a), b), PropAnd(a, PropNot(b)))
+def PropMux(choose, a, b):
+	return PropOr(PropAnd(choose, a), PropAnd(PropNot(choose), b))
 
 class PropEnum(Enum):
     AND = 0

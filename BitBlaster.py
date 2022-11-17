@@ -1,4 +1,5 @@
 import z3
+import math
 from ExprNode import *
 from PropNode import *
 from typing import List, Tuple
@@ -40,13 +41,16 @@ class Solver:
 			return new_variables, PropConstant(1), new_variables
 
 		else:
-			if node.func_type == FunctionEnum.EQUALS:
-				left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
+			left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
+			if node.func_type in two_operand_mapping:
 				right_vector, right_equation, right_variables = self.BitBlast(node.children[1], v_idx + len(left_variables))
 				variables                                     = left_variables + right_variables
 				equation                                      = PropAnd(left_equation, right_equation)
+			else:
+				variables                                     = left_variables
+				equation                                      = left_equation
 
-
+			if node.func_type == FunctionEnum.EQUALS:
 				eq_var = PropVariable("v{}".format(v_idx + len(variables)))
 				eq_equation = PropConstant(1)
 				for i in range(node.children[0].width):
@@ -55,62 +59,65 @@ class Solver:
 				return [eq_var], equation, variables + [eq_var]
 
 			elif node.func_type == FunctionEnum.BITWISE_AND or node.func_type == FunctionEnum.AND:
-				left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
-				right_vector, right_equation, right_variables = self.BitBlast(node.children[1], v_idx + len(left_variables))
-				variables                                     = left_variables + right_variables
-				equation                                      = PropAnd(left_equation, right_equation)
-
 				new_variables = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.width)]
 				for i in range(node.children[0].width):
 					equation = PropAnd(equation, PropIff(new_variables[i], PropAnd(left_vector[i], right_vector[i])))
 				return new_variables, equation, variables + new_variables
 
 			elif node.func_type == FunctionEnum.BITWISE_OR or node.func_type == FunctionEnum.OR:
-				left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
-				right_vector, right_equation, right_variables = self.BitBlast(node.children[1], v_idx + len(left_variables))
-				variables                                     = left_variables + right_variables
-				equation                                      = PropAnd(left_equation, right_equation)
-
 				new_variables = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.width)]
 				for i in range(node.children[0].width):
 					equation = PropAnd(equation, PropIff(new_variables[i], PropOr(left_vector[i], right_vector[i])))
 				return new_variables, equation, variables + new_variables
 
 			elif node.func_type == FunctionEnum.BITWISE_XOR:
-				left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
-				right_vector, right_equation, right_variables = self.BitBlast(node.children[1], v_idx + len(left_variables))
-				variables                                     = left_variables + right_variables
-				equation                                      = PropAnd(left_equation, right_equation)
-
 				new_variables = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.width)]
 				for i in range(node.children[0].width):
 					equation = PropAnd(equation, PropIff(new_variables[i], PropXor(left_vector[i], right_vector[i])))
 				return new_variables, equation, variables + new_variables
 
 			elif node.func_type == FunctionEnum.BITWISE_NOT or node.func_type == FunctionEnum.NOT:
-				left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
-				variables                                     = left_variables
-				equation                                      = left_equation
-
 				new_variables = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.width)]
 				for i in range(node.children[0].width):
 					equation = PropAnd(equation, PropIff(new_variables[i], PropNot(left_vector[i])))
 				return new_variables, equation, variables + new_variables
 
 			elif node.func_type == FunctionEnum.EXTRACT:
-				left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
-				variables                                     = left_variables
-				equation                                      = left_equation
-
 				return left_vector[len(left_vector)-node.children[1]-1:len(left_vector)-node.children[2]], equation, variables
 
 			elif node.func_type == FunctionEnum.CONCAT:
-				left_vector, left_equation, left_variables    = self.BitBlast(node.children[0], v_idx)
-				right_vector, right_equation, right_variables = self.BitBlast(node.children[1], v_idx + len(left_variables))
-				variables                                     = left_variables + right_variables
-				equation                                      = PropAnd(left_equation, right_equation)
-
 				return left_vector + right_vector, equation, variables
+
+			elif node.func_type == FunctionEnum.ADD:
+				new_variables = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.width)]
+				carries       = [PropVariable("v{}".format(i + v_idx + len(variables) + node.width)) for i in range(node.width + 1)]
+				left_vector, right_vector = left_vector[::-1], right_vector[::-1]
+				equation = PropAnd(equation, PropNot(carries[0]))
+				for i in range(node.children[0].width):
+					equation = PropAnd(equation, PropIff(carries[i + 1], reduce(PropOr, [PropAnd(left_vector[i], right_vector[i]), PropAnd(left_vector[i], carries[i]), PropAnd(right_vector[i], carries[i])])))
+					equation = PropAnd(equation, PropIff(new_variables[i], reduce(PropXor, [left_vector[i], right_vector[i], carries[i]])))
+				return new_variables[::-1], equation, variables + new_variables + carries
+
+			elif node.func_type == FunctionEnum.SUBTRACT:
+				return self.BitBlast(node.children[0] + (~node.children[1] + BitVecVal(1, node.children[1].width)))
+
+			elif node.func_type == FunctionEnum.LSHIFT or node.func_type == FunctionEnum.RSHIFT:
+				rounds = math.ceil(math.log2(node.width))
+				right_vector = right_vector[::-1]
+				if node.func_type == FunctionEnum.LSHIFT:
+					left_vector = left_vector[::-1]
+				current_vector = left_vector
+				for r in range(rounds):
+					round_vector = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.width)]
+					variables += round_vector
+					for z in range(2**r):
+						equation = PropAnd(equation, PropIff(round_vector[z], PropAnd(PropNot(right_vector[r]), current_vector[z])))
+					for z in range(2**r, node.width):
+						equation = PropAnd(equation, PropIff(round_vector[z], PropMux(right_vector[r], current_vector[z - 2**r], current_vector[z])))
+					current_vector = round_vector
+				if node.func_type == FunctionEnum.LSHIFT:
+					current_vector = current_vector[::-1]
+				return current_vector, equation, variables
 
 		raise Exception("Unsupported OP", node.func_type)
 
@@ -198,4 +205,23 @@ s.add(Concat(a, b) == BitVecVal(0b1100110010, 10))
 model = s.solve()
 print("Model:", model, "\n")
 
+s = Solver()
+s.add(a + b == BitVecVal(0b00010, 5))
+s.add(a == BitVecVal(0b00001, 5))
+model = s.solve()
+print("Model:", model, "\n")
 
+s = Solver()
+s.add(a - b == BitVecVal(0b00010, 5))
+s.add(b == BitVecVal(0b00001, 5))
+model = s.solve()
+print("Model:", model, "\n")
+
+s = Solver()
+s.add((a << BitVecVal(0b00010, 5)) == BitVecVal(0b00100, 5))
+model = s.solve()
+print("Model:", model, "\n")
+s = Solver()
+s.add((a >> BitVecVal(0b00100, 5)) == BitVecVal(0b00001, 5))
+model = s.solve()
+print("Model:", model, "\n")
