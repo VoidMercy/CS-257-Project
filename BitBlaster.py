@@ -137,6 +137,21 @@ class Solver:
 					partial_products = [new_sum] + partial_products
 				return partial_products[0][::-1], equation, variables
 
+			elif node.func_type == FunctionEnum.LT:
+				r = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.children[0].width)] + [PropConstant(0)]
+				for i in range(node.children[0].width):
+					equation = PropAnd(equation, PropIff(r[i], PropOr(PropAnd(PropNot(left_vector[i]), right_vector[i]), PropAnd(r[i + 1], PropOr(PropNot(left_vector[i]), right_vector[i])))))
+				return [r[0]], equation, variables + r[:-1]
+
+			elif node.func_type == FunctionEnum.GT:
+				return self.BitBlast(node.children[1] < node.children[0], v_idx)
+
+			elif node.func_type == FunctionEnum.LE:
+				return self.BitBlast(Or(node.children[0] < node.children[1], node.children[0] == node.children[1]), v_idx)
+
+			elif node.func_type == FunctionEnum.GE:
+				return self.BitBlast(Or(node.children[1] < node.children[0], node.children[0] == node.children[1]), v_idx)
+
 		raise Exception("Unsupported OP", node.func_type)
 
 	def z3_solve(self, variables:List[str], wff:PropNode):
@@ -250,3 +265,37 @@ a = BitVec("A", 32)
 s.add(a * a == BitVecVal(169, 32))
 model = s.solve()
 print("Model:", model, "\n")
+
+s = Solver()
+a = BitVec("A", 5)
+b = BitVec("B", 1)
+s.add(b == (a < BitVecVal(3, 5)))
+s.add(a == BitVecVal(1, 5))
+model = s.solve()
+print("Model:", model, "\n")
+
+s = Solver()
+a = BitVec("A", 5)
+b = BitVec("B", 1)
+s.add(b == (a > BitVecVal(3, 5)))
+s.add(a == BitVecVal(4, 5))
+model = s.solve()
+print("Model:", model, "\n")
+
+s = Solver()
+a = BitVec("A", 5)
+b = BitVec("B", 1)
+s.add(b == (a >= BitVecVal(3, 5)))
+s.add(a == BitVecVal(2, 5))
+model = s.solve()
+print("Model:", model, "\n")
+
+
+s = Solver()
+a = BitVec("A", 5)
+b = BitVec("B", 1)
+s.add(b == (a <= BitVecVal(3, 5)))
+s.add(a == BitVecVal(4, 5))
+model = s.solve()
+print("Model:", model, "\n")
+

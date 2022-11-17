@@ -23,8 +23,8 @@ class FunctionEnum(Enum):
     EQUALS = 14
     LT = 15
     GT = 16
-    LEQ = 17
-    GEQ = 18
+    LE = 17
+    GE = 18
 
 two_operand_mapping = {
     FunctionEnum.AND : "&&",
@@ -41,8 +41,8 @@ two_operand_mapping = {
     FunctionEnum.CONCAT : "CONCAT",
     FunctionEnum.LT : "<",
     FunctionEnum.GT : ">",
-    FunctionEnum.LEQ : "<=",
-    FunctionEnum.GEQ : ">="
+    FunctionEnum.LE : "<=",
+    FunctionEnum.GE : ">="
 }
 
 class ExprNode:
@@ -68,13 +68,21 @@ class ExprNode:
         return FunctionNode(FunctionEnum.MULTIPLY, [self, other])
     def __eq__(self, other):
         return FunctionNode(FunctionEnum.EQUALS, [self, other])
+    def __lt__(self, other):
+        return FunctionNode(FunctionEnum.LT, [self, other])
+    def __le__(self, other):
+        return FunctionNode(FunctionEnum.LE, [self, other])
+    def __gt__(self, other):
+        return FunctionNode(FunctionEnum.GT, [self, other])
+    def __ge__(self, other):
+        return FunctionNode(FunctionEnum.GE, [self, other])
 
 class FunctionNode(ExprNode):
     def __init__(self, func_type, children):
         self.func_type = func_type
         self.children = children
 
-        if self.func_type == FunctionEnum.EQUALS:
+        if self.func_type in set([FunctionEnum.EQUALS, FunctionEnum.LT, FunctionEnum.GT, FunctionEnum.LE, FunctionEnum.GE]):
             self.width = 1
         elif self.func_type == FunctionEnum.EXTRACT:
             self.width = children[1] - children[2] + 1
