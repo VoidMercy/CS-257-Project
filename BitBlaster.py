@@ -15,10 +15,10 @@ class Solver:
 
 	def solve(self):
 		expression = reduce(lambda x,y: And(x, y), self.conjunction)
-		print("Expression", expression)
 		prop_vars, equation, variables = self.BitBlast(expression)
 		assert len(prop_vars) == 1
 		equation = PropAnd(equation, prop_vars[0])
+		print("Expression", expression)
 		print(equation)
 		print(self.theory_prop_map)
 
@@ -90,13 +90,12 @@ class Solver:
 
 			elif node.func_type == FunctionEnum.ADD:
 				new_variables = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.width)]
-				carries       = [PropVariable("v{}".format(i + v_idx + len(variables) + node.width)) for i in range(node.width + 1)]
+				carries       = [PropConstant(0)] + [PropVariable("v{}".format(i + v_idx + len(variables) + node.width)) for i in range(node.width)]
 				left_vector, right_vector = left_vector[::-1], right_vector[::-1]
-				equation = PropAnd(equation, PropNot(carries[0]))
 				for i in range(node.children[0].width):
 					s, cout = PropFullAdder(left_vector[i], right_vector[i], carries[i])
 					equation = PropAnd(equation, PropAnd(PropIff(new_variables[i], s), PropIff(carries[i + 1], cout)))
-				return new_variables[::-1], equation, variables + new_variables + carries
+				return new_variables[::-1], equation, variables + new_variables + carries[1:]
 
 			elif node.func_type == FunctionEnum.SUBTRACT:
 				return self.BitBlast(node.children[0] + (~node.children[1] + BitVecVal(1, node.children[1].width)))
@@ -118,6 +117,24 @@ class Solver:
 				if node.func_type == FunctionEnum.LSHIFT:
 					current_vector = current_vector[::-1]
 				return current_vector, equation, variables
+
+			elif node.func_type == FunctionEnum.MULTIPLY:
+				left_vector, right_vector = left_vector[::-1], right_vector[::-1]
+				partial_products = []
+				for i in range(node.width):
+					partial_products.append([PropConstant(0) for _ in range(i)] + [PropAnd(j, right_vector[i]) for j in left_vector[:node.width - i]])
+				print(partial_products)
+				while len(partial_products) > 1:
+					a, b = partial_products.pop(), partial_products.pop()
+					new_sum = [PropVariable("v{}".format(i + v_idx + len(variables))) for i in range(node.width)]
+					carries = [PropConstant(0)] + [PropVariable("v{}".format(i + v_idx + len(variables) + node.width)) for i in range(node.width)]
+					variables += new_sum + carries[1:]
+					for i in range(node.width):
+						s, cout = PropFullAdder(a[i], b[i], carries[i])
+						equation = PropAnd(equation, PropAnd(PropIff(new_sum[i], s), PropIff(carries[i + 1], cout)))
+					partial_products = [new_sum] + partial_products
+				# Sum partial products
+				return partial_products[0][::-1], equation, variables
 
 		raise Exception("Unsupported OP", node.func_type)
 
@@ -221,6 +238,7 @@ s = Solver()
 s.add((a << BitVecVal(0b00010, 5)) == BitVecVal(0b00100, 5))
 model = s.solve()
 print("Model:", model, "\n")
+
 s = Solver()
 s.add((a >> BitVecVal(0b00100, 5)) == BitVecVal(0b00001, 5))
 model = s.solve()
