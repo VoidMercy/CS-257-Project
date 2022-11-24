@@ -68,6 +68,7 @@ class Solver:
 			for name, c in coeff.items():
 				A.append((v_idx_map[name], c))
 			A.append((v_idx, 2**constraint.children[0].width))
+			bounds.append((v_idx, 0, 2**constraint.children[0].width - 1))
 			v_idx += 1
 			b_eq.append(constraint.extract_constant().value)
 			A_eq.append(A)
@@ -91,8 +92,10 @@ class Solver:
 			b_ub_matrix[i] = b_ub[i]
 		for i in bounds:
 			bounds_matrix[i[0]] = (i[1], i[2])
-		for value in v_idx_map.values():
-			c_matrix[value] = 1
+		# for i in range(len(self.variables), v_idx):
+		# 	c_matrix[i] = 1
+		for i in range(len(self.variables)):
+			c_matrix[i] = 1
 
 		print(A_eq_matrix)
 		print(b_eq_matrix)
@@ -140,23 +143,30 @@ class Solver:
 	# Bounds are expected to have a min bound of 0. I.e. (0, None), without loss of generality.
 	# Returns tuple (x : vector of solutions)
 	def solve_ilp(self, c, A_ub, b_ub, A_eq, b_eq, bounds):
-		res = scipy.optimize.linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
-		if not res.success:
-			return None
-		for i in range(len(res.x)):
-			x = res.x[i]
-			if np.ceil(x) != x:
-				# Branch and bound
-				new_bounds = bounds[:]
-				new_bounds[i] = (bounds[i][0], np.floor(x))
-				res = self.solve_ilp(c, A_ub, b_ub, A_eq, b_eq, new_bounds)
-				if res is not None:
-					return res
-				new_bounds = bounds[:]
-				new_bounds[i] = (np.ceil(x), bounds[i][1])
-				res = self.solve_ilp(c, A_ub, b_ub, A_eq, b_eq, new_bounds)
-				return res
-		return [int(i) for i in res.x]
+		queue = []
+		queue.append(bounds)
+		while len(queue) != 0:
+			cur_bounds = queue.pop(0)
+			res = scipy.optimize.linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=cur_bounds)
+			if not res.success:
+				continue
+			print("BOUNDS", cur_bounds, res.x)
+			success = True
+			for i in range(len(res.x)):
+				x = res.x[i]
+				if abs(x - round(x)) > 0.000000000001:
+					print("L", x, np.ceil(x))
+					# Branch and bound
+					new_bounds = cur_bounds[:]
+					new_bounds[i] = (cur_bounds[i][0], np.floor(x))
+					queue.append(new_bounds)
+					new_bounds = cur_bounds[:]
+					new_bounds[i] = (np.ceil(x), cur_bounds[i][1])
+					queue.append(new_bounds)
+					success = False
+			if success:
+				print("WIN")
+				return [round(i) for i in res.x]
 
 # Let's try solving:
 # A + B <= 5
@@ -176,55 +186,36 @@ class Solver:
 
 # s.solve()
 
-A = BitVec("A", 4)
-s = Solver()
-s.add(A * 7 == 3)
-print(s.solve())
-
-exit()
-
-
 s = Solver()
 s2 = bSolver()
 
-N = 1
+N = 4
 MAX = 1000
+BITS = 32
 
 array = np.random.randint(0, MAX, size=(N, N))
-while np.linalg.matrix_rank(array) != N:
-	array = np.random.randint(0, MAX, size=(N, N))
 x = np.random.randint(0, MAX, size=(N, 1))
 b = array @ x
-for i in b:
-	assert i < 2**31
 
-print("ARRAY", array)
-print("X", x)
-print("B", b)
-
-variables = [BitVec("A" + str(i), 32) for i in range(N)]
+variables = [BitVec("A" + str(i), BITS) for i in range(N)]
 for row in range(N):
 	expression = []
 	for col in range(N):
-		expression.append(BitVecVal(int(array[row][col]), 32) * variables[col])
+		expression.append(BitVecVal(int(array[row][col]), BITS) * variables[col])
 	expression = reduce(lambda x,y:x + y, expression)
-	print(expression)
-	s.add(expression == BitVecVal(int(b[row]), 32))
-	s2.add(expression == BitVecVal(int(b[row]), 32))
-
-print("CONJUNCTIONS")
-for i in s.conjunction:
-	print(i)
+	s.add(expression == BitVecVal(int(b[row]), BITS))
+	s2.add(expression == BitVecVal(int(b[row]), BITS))
 
 ret = s.solve()
 
-# print(ret)
 
-# x_solve = np.zeros((N, 1), dtype=np.longlong)
-# for i in range(N):
-# 	x_solve[i] = ret["A" + str(i)]
-# print(x_solve)
-# print(array @ x_solve)
+print(ret)
+
+x_solve = np.zeros((N, 1), dtype=np.longlong)
+for i in range(N):
+	x_solve[i] = ret["A" + str(i)]
+print(b)
+print(array @ x_solve)
 
 # ret = s2.solve()
 # print(ret)

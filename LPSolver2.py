@@ -37,8 +37,6 @@ class Solver:
 			self.conjunction[i] = self.conjunction[i].tree_rotation()
 		for i in range(len(self.conjunction)):
 			self.conjunction[i] = self.conjunction[i].constant_simplify()
-		for i in self.conjunction:
-			print(str(i).replace("(", "").replace(")", ""))
 
 		# Now we build the matrix
 		v_idx_map = {} # Maps variable name to v_idx
@@ -47,7 +45,6 @@ class Solver:
 		for v in self.variables:
 			v_idx_map[v] = v_idx
 			v_idx += 1
-		print(v_idx_map)
 
 		# A : List[List[Tuple(v_idx, value)]]
 		# b_u : List[value]
@@ -66,16 +63,16 @@ class Solver:
 			coeff = (self.find_coefficients(constraint))
 			for name, c in coeff.items():
 				A_temp.append((v_idx_map[name], c))
-			A_temp.append((v_idx, -2**constraint.children[0].width))
+			A_temp.append((v_idx, -2**constraint.children[0].width)) # Guess overflow or underflow! In practice, underflow shouldn't happen.
 			b_u.append(constraint.extract_constant().value)
 			b_l.append(b_u[-1])
 			A.append(A_temp)
-			v_idx += 2
+			v_idx += 1
 
 		A_matrix = [[0]*v_idx for i in range(len(A))]
 		b_u_matrix = [0]*len(A)
 		b_l_matrix = [0]*len(A)
-		bounds_matrix = [(None, None)]*v_idx
+		bounds_matrix = [(-np.inf, np.inf)]*v_idx
 		c_matrix = [0]*v_idx
 
 		for i in range(len(A)):
@@ -86,21 +83,17 @@ class Solver:
 			b_l_matrix[i] = b_l[i]
 		for i in bounds:
 			bounds_matrix[i[0]] = (i[1], i[2])
-		for value in v_idx_map.values():
+		for value in range(len(self.variables), v_idx):
 			c_matrix[value] = 1
+		# for name, value in v_idx_map.items():
+		# 	c_matrix[value] = 1
 
-		print(A_matrix)
-		print(b_u_matrix)
-		print(b_l_matrix)
-		print(bounds_matrix)
-		print(c_matrix)
 		solution = self.solve_ilp(c_matrix, A_matrix, b_u_matrix, b_l_matrix, bounds_matrix)
 		print()
 		print("SOLUTION")
 		ret = {}
 		if solution is not None:
 			for v_name, v_idx in v_idx_map.items():
-				print("{}:{}".format(v_name, solution[v_idx]))
 				ret[v_name] = solution[v_idx]
 		else:
 			print("UNSAT")
@@ -137,12 +130,10 @@ class Solver:
 		constraints = scipy.optimize.LinearConstraint(A_matrix, b_l_matrix, b_u_matrix)
 		integrality = np.ones_like(c_matrix)
 		bounds = scipy.optimize.Bounds(lb=[i[0] for i in bounds_matrix], ub=[i[1] for i in bounds_matrix])
+		# exit()
 		print("Start solving")
-		# solution = scipy.optimize.milp(c=c_matrix, constraints=constraints, integrality=integrality, bounds=bounds, options={"time_limit":1})
+		# solution = scipy.optimize.milp(c=c_matrix, constraints=constraints, integrality=integrality, bounds=bounds)
 		solution = scipy.optimize.milp(c=c_matrix, constraints=constraints, integrality=integrality)
-		print(constraints)
-		print(integrality)
-		print(bounds)
 		print(solution)
 		if not solution.success:
 			return None
@@ -152,9 +143,6 @@ class Solver:
 # A + B <= 5
 # A + B >= 2
 
-# s = Solver()
-# A = BitVec("A", 32)
-# B = BitVec("B", 32)
 # C = BitVec("C", 32)
 # D = BitVec("D", 32)
 # E = BitVec("E", 32)
@@ -167,51 +155,47 @@ class Solver:
 # s.solve()
 
 # s = Solver()
-# s2 = bSolver()
+# A = BitVec("A", 4)
+# B = BitVec("B", 4)
+# s.add(A - B == 15)
+# s.add(A == 1)
 
-# N = 4
-# MAX = 2**10
-# BITS = 32
+# s.add(A * 7 == 5)
+# print(s.solve())
 
-# array = np.random.randint(0, MAX, size=(N, N))
-# while np.linalg.matrix_rank(array) != N:
-# 	array = np.random.randint(0, MAX, size=(N, N))
-# x = np.random.randint(0, MAX, size=(N, 1))
-# b = array @ x
-# for i in b:
-# 	assert i < 2**BITS
+# exit()
 
-# print("ARRAY", array)
-# print("X", x)
-# print("B", b)
 
-# variables = [BitVec("A" + str(i), BITS) for i in range(N)]
-# for row in range(N):
-# 	expression = []
-# 	for col in range(N):
-# 		expression.append(BitVecVal(int(array[row][col]), BITS) * variables[col])
-# 	expression = reduce(lambda x,y:x + y, expression)
-# 	print(expression)
-# 	s.add(expression == BitVecVal(int(b[row]), BITS))
-# 	s2.add(expression == BitVecVal(int(b[row]), BITS))
+s = Solver()
+s2 = bSolver()
 
-# print("CONJUNCTIONS")
-# for i in s.conjunction:
-# 	print(i)
+N = 200
+MAX = 1000
+BITS = 32
 
-# ret = s.solve()
+array = np.random.randint(0, MAX, size=(N, N))
+x = np.random.randint(0, MAX, size=(N, 1))
+b = array @ x
+for i in b:
+	assert i < 2**BITS
 
-# print(ret)
+variables = [BitVec("A" + str(i), BITS) for i in range(N)]
+for row in range(N):
+	expression = []
+	for col in range(N):
+		expression.append(BitVecVal(int(array[row][col]), BITS) * variables[col])
+	expression = reduce(lambda x,y:x + y, expression)
+	s.add(expression == BitVecVal(int(b[row]), BITS))
+	s2.add(expression == BitVecVal(int(b[row]), BITS))
 
-# x_solve = np.zeros((N, 1), dtype=np.longlong)
-# for i in range(N):
-# 	x_solve[i] = ret["A" + str(i)]
-# assert(all(b == array @ x_solve))
+ret = s.solve()
+
+print(ret)
+
+x_solve = np.zeros((N, 1), dtype=np.longlong)
+for i in range(N):
+	x_solve[i] = ret["A" + str(i)]
+assert(all(b == array @ x_solve))
 
 # ret = s2.solve()
 # print(ret)
-
-A = BitVec("A", 28)
-s = Solver()
-s.add(A * 123124124 == 231974516)
-print(s.solve())
