@@ -27,8 +27,6 @@ class Solver:
 		# 	self.conjunction[i] = self.conjunction[i].tree_rotation()
 		for i in range(len(self.conjunction)):
 			self.conjunction[i] = self.conjunction[i].constant_simplify()
-		for i in range(len(self.conjunction)):
-			print(self.conjunction[i])
 
 		# step 2. encode linear expression by labeling each node as a new variable
 		self.v_idx_map = {} # Maps variable name to v_idx
@@ -38,22 +36,24 @@ class Solver:
 		b_l = []
 		bounds = []
 		for expr in self.conjunction:
-			print("="*50)
 			print(expr)
 			A_, b_u_, b_l_, bounds_ = self.encode_lp(expr)
 			A += A_
 			b_u += b_u_
 			b_l += b_l_
 			bounds += bounds_
-		print("*"*50)
-		print(A)
-		print(self.v_idx)
-		A_matrix = [[0]*self.v_idx for i in range(len(A))]
-		b_u_matrix = [0]*len(A)
-		b_l_matrix = [0]*len(A)
+
+		print("DONE ENCODE")
+		A_matrix = np.zeros((len(A), self.v_idx), dtype=np.longlong)
+		b_u_matrix = np.zeros((len(A)), dtype=np.longlong)
+		b_l_matrix = np.zeros((len(A)), dtype=np.longlong)
+		# A_matrix = [[0]*self.v_idx for i in range(len(A))]
+		# b_u_matrix = [0]*len(A)
+		# b_l_matrix = [0]*len(A)
 		bounds_matrix = [(0, np.inf)]*self.v_idx
 		c_matrix      = np.zeros((self.v_idx), dtype=np.longlong)
 
+		print("DONE CREATING MATRIX")
 		for i in range(len(A)):
 			for j in A[i]:
 				if j[0] is not None:
@@ -68,6 +68,7 @@ class Solver:
 		for value in self.v_idx_map.values():
 			c_matrix[value] = 1
 
+		print("DONE ENCODING MATRIX")
 		solution = self.solve_milp(c_matrix, A_matrix, b_u_matrix, b_l_matrix, bounds_matrix)
 		print()
 		print("SOLUTION")
@@ -120,7 +121,6 @@ class Solver:
 					b_l += [0 - left.value - right.value]
 					b_u += [0 - left.value - right.value]
 				elif expr.func_type == FunctionEnum.SUBTRACT:
-					expr.v_idx = self.v_idx
 					# 2^n * mod + left - right = expr
 					# 0 <= mod <= 1
 					# 0 <= expr <= 2^n - 1
@@ -134,7 +134,6 @@ class Solver:
 					b_l += [0 - left.value + right.value]
 					b_u += [0 - left.value + right.value]
 				elif expr.func_type == FunctionEnum.MULTIPLY: # MULTIPLY
-					expr.v_idx = self.v_idx
 					# left * right == expr + mod * 2^n
 					# Either left or right is constant
 					# 0 <= mod <= 2^n - 1
@@ -328,13 +327,13 @@ class Solver:
 			return [], [], [], [(expr.v_idx, 0, 2**expr.width - 1)]
 
 	def solve_milp(self, c_matrix, A_matrix, b_u_matrix, b_l_matrix, bounds_matrix):
-		print("A", A_matrix)
-		print("B_L", b_l_matrix)
-		print("B_U", b_u_matrix)
+		# print("A", A_matrix)
+		# print("B_L", b_l_matrix)
+		# print("B_U", b_u_matrix)
 		constraints = scipy.optimize.LinearConstraint(A_matrix, b_l_matrix, b_u_matrix)
 		integrality = np.ones_like(c_matrix)
 		bounds = scipy.optimize.Bounds(lb=[i[0] for i in bounds_matrix], ub=[i[1] for i in bounds_matrix])
-		print("BOUNDS", bounds)
+		# print("BOUNDS", bounds)
 		# exit()
 		print("Start solving")
 		solution = scipy.optimize.milp(c=c_matrix, constraints=constraints, integrality=integrality, bounds=bounds)
@@ -370,19 +369,19 @@ class Solver:
 # A + B <= 5
 # A + B >= 2
 
-s = Solver()
-A = BitVec("A", 32)
-B = BitVec("B", 32)
-C = BitVec("C", 32)
-s.add(~A == 7)
+# s = Solver()
+# A = BitVec("A", 32)
+# B = BitVec("B", 32)
+# C = BitVec("C", 32)
+# s.add(~A == 7)
 # s.add(A + 2 == 3)
 # s.add((A + BitVecVal(5, 32) * (B + 3)) & C == 1337)
-print(s.solve())
-exit()
+# print(s.solve())
+# exit()
 
 s = Solver()
 
-N = 2
+N = 150
 MAX = 2000
 BITS = 32
 
