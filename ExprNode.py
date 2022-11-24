@@ -1,4 +1,5 @@
 from enum import Enum
+from functools import reduce
 
 class NodeType(Enum):
     FUNCTION = 0
@@ -81,6 +82,14 @@ class FunctionNode(ExprNode):
     def __init__(self, func_type, children):
         self.func_type = func_type
         self.children = children
+        children_width = None
+        for i in children:
+            if isinstance(i, ExprNode):
+                children_width = i.width
+        assert children_width is not None
+        for i in range(len(children)):
+            if isinstance(children[i], int):
+                children[i] = BitVecVal(children[i], children_width)
 
         if self.func_type in set([FunctionEnum.EQUALS, FunctionEnum.LT, FunctionEnum.GT, FunctionEnum.LE, FunctionEnum.GE]):
             self.width = 1
@@ -93,6 +102,8 @@ class FunctionNode(ExprNode):
             self.width = self.children[0].width
         else:
             self.width = self.children[0].width
+        # if self.func_type in two_operand_mapping and isinstance(self.children[1], ConstantNode) and not isinstance(self.children[0], ConstantNode):
+        #     self.children[0], self.children[1] = self.children[1], self.children[0]
 
     def __str__(self):
         if self.func_type in two_operand_mapping:
@@ -106,6 +117,71 @@ class FunctionNode(ExprNode):
         elif self.func_type == FunctionEnum.CONCAT:
             return "Concat({}, {})".format(self.children[0], self.children[1])
 
+    def get_variables(self):
+        return reduce(lambda x,y:x | y, [i.get_variables() if isinstance(i, ExprNode) else set() for i in self.children])
+
+    # Move constants up the tree and simplify them
+    def constant_simplify(self):
+        for i in range(len(self.children)):
+            if isinstance(self.children[i], ExprNode):
+                self.children[i] = self.children[i].constant_simplify()
+        if isinstance(self.children[0], ConstantNode) and isinstance(self.children[1], ConstantNode):
+            if self.func_type == FunctionEnum.ADD:
+                return ConstantNode((self.children[0].value + self.children[1].value) & ((1 << self.children[0].width) - 1), self.children[0].width)
+            elif self.func_type == FunctionEnum.SUBTRACT:
+                return ConstantNode((self.children[0].value - self.children[1].value) & ((1 << self.children[0].width) - 1), self.children[0].width)
+            elif self.func_type == FunctionEnum.MULTIPLY:
+                return ConstantNode((self.children[0].value * self.children[1].value) & ((1 << self.children[0].width) - 1), self.children[0].width)
+        if isinstance(self.children[0], ConstantNode):
+            self.children[0], self.children[1] = self.children[1], self.children[0]
+        # Constant collapse (x + A) + B into x + (A + B)
+        if self.func_type in set([FunctionEnum.ADD, FunctionEnum.SUBTRACT]) and isinstance(self.children[1], ConstantNode) and isinstance(self.children[0], FunctionNode) and isinstance(self.children[0].children[1], ConstantNode) and self.children[0].func_type in set([FunctionEnum.ADD, FunctionEnum.SUBTRACT]):
+            self.children[0], self.children[1] = self.children[0].children[0], FunctionNode(self.func_type, [FunctionNode(self.children[0].func_type, [0, self.children[0].children[1]]).constant_simplify(), self.children[1]]).constant_simplify()
+            self.func_type = FunctionEnum.ADD
+        # Move constant up the tree
+        if self.func_type in set([FunctionEnum.ADD, FunctionEnum.SUBTRACT]) and not isinstance(self.children[1], ConstantNode) and isinstance(self.children[0], FunctionNode) and isinstance(self.children[0].children[1], ConstantNode) and self.children[0].func_type in set([FunctionEnum.ADD, FunctionEnum.SUBTRACT]):
+            self.children[0].func_type, self.func_type = self.func_type, self.children[0].func_type
+            self.children[0].children[1], self.children[1] = self.children[1], self.children[0].children[1]
+        return self
+
+    def distribute_constants(self):
+        if self.func_type == FunctionEnum.MULTIPLY and isinstance(self.children[0], ConstantNode) and isinstance(self.children[1], FunctionNode) and self.children[1].func_type in set([FunctionEnum.ADD, FunctionEnum.SUBTRACT]):
+            self.children[1].children[0] = FunctionNode(FunctionEnum.MULTIPLY, [self.children[0], self.children[1].children[0]])
+            self.children[1].children[1] = FunctionNode(FunctionEnum.MULTIPLY, [self.children[0], self.children[1].children[1]])
+            for i in range(len(self.children)):
+                self.children[i] = self.children[i].distribute_constants()
+            return self.children[1].distribute_constants()
+        for i in range(len(self.children)):
+            self.children[i] = self.children[i].distribute_constants()
+        return self
+
+    # Rotate to a left-skewed tree
+    def tree_rotation(self):
+        if isinstance(self.children[1], FunctionNode) and self.func_type in set([FunctionEnum.ADD, FunctionEnum.SUBTRACT]) and self.children[1].func_type in set([FunctionEnum.ADD, FunctionEnum.SUBTRACT]):
+            if self.func_type == FunctionEnum.SUBTRACT and self.children[1].func_type == FunctionEnum.SUBTRACT:
+                return FunctionNode(FunctionEnum.ADD, [self.children[0] - self.children[1].children[0], self.children[1].children[1]]).tree_rotation()
+            elif self.func_type == FunctionEnum.ADD:
+                return FunctionNode(self.children[1].func_type, [self.children[0] + self.children[1].children[0], self.children[1].children[1]]).tree_rotation()
+            elif self.func_type == FunctionEnum.SUBTRACT and self.children[1].func_type == FunctionEnum.ADD:
+                return FunctionNode(FunctionEnum.SUBTRACT, [self.children[0] - self.children[1].children[0], self.children[1].children[1]]).tree_rotation()
+        for i in range(len(self.children)):
+            self.children[i] = self.children[i].tree_rotation()
+        return self
+
+    # Move everything to one side
+    def equation_skew(self):
+        if self.func_type in set([FunctionEnum.EQUALS, FunctionEnum.LT, FunctionEnum.GT, FunctionEnum.LE, FunctionEnum.GE]):
+            self.children[0] = self.children[0] - self.children[1]
+            self.children[1] = ConstantNode(0, self.children[1].width)
+
+    def extract_constant(self):
+        if self.func_type in set([FunctionEnum.EQUALS, FunctionEnum.LT, FunctionEnum.GT, FunctionEnum.LE, FunctionEnum.GE]):
+            if isinstance(self.children[0], FunctionNode) and isinstance(self.children[0].children[1], ConstantNode):
+                return FunctionNode(FunctionEnum.SUBTRACT, [0, FunctionNode(self.children[0].func_type, [0, self.children[0].children[1]])]).constant_simplify()
+            else:
+                return self.children[1]
+        return None
+
 class VariableNode(ExprNode):
     def __init__(self, name, width):
         self.name = name
@@ -116,15 +192,32 @@ class VariableNode(ExprNode):
         return str(self)
     def __hash__(self):
         return hash((self.name, self.width))
+    def get_variables(self):
+        return set([self.name])
+    def constant_simplify(self):
+        return self
+    def distribute_constants(self):
+        return self
+    def tree_rotation(self):
+        return self
 
 class ConstantNode(ExprNode):
     def __init__(self, value, width):
         self.value = value & ((1 << width) - 1)
         self.width = width
     def __str__(self):
-        return "{}:{}".format(bin(self.value)[2:].zfill(self.width), self.width)
+        # return "{}:{}".format(bin(self.value)[2:].zfill(self.width), self.width)
+        return "{}:{}".format(str(self.value), self.width)
     def __repr__(self):
         return str(self)
+    def get_variables(self):
+        return set()
+    def constant_simplify(self):
+        return self
+    def distribute_constants(self):
+        return self
+    def tree_rotation(self):
+        return self
 
 # Helper Functions that use z3-like API
 def BitVec(name, width):

@@ -3,6 +3,7 @@ import scipy
 import numpy as np
 from ExprNode import *
 from BitBlaster import Solver as bSolver
+import zlib
 
 sys.setrecursionlimit(200000)
 
@@ -48,59 +49,52 @@ class Solver:
 			v_idx += 1
 		print(v_idx_map)
 
-		# A_eq : List[List[Tuple(v_idx, value)]]
-		# b_eq : List[value]
-		# A_ub : List[List[Tuple(v_idx, value)]]
-		# b_ub : List[value]
+		# A : List[List[Tuple(v_idx, value)]]
+		# b_u : List[value]
+		# b_l : List[value]
 		# bounds : List[Tuple(v_idx, min, max)]
-		A_eq = []
-		b_eq = []
-		A_ub = []
-		b_ub = []
+		A   = []
+		b_u = []
+		b_l = []
 		bounds = []
 
 		for v in self.variables:
 			bounds.append((v_idx_map[v], 0, 2**self.variable_width_map[v] - 1))
 
 		for constraint in self.conjunction:
-			A = []
+			A_temp = []
 			coeff = (self.find_coefficients(constraint))
 			for name, c in coeff.items():
-				A.append((v_idx_map[name], c))
-			A.append((v_idx, 2**constraint.children[0].width))
-			v_idx += 1
-			b_eq.append(constraint.extract_constant().value)
-			A_eq.append(A)
+				A_temp.append((v_idx_map[name], c))
+			A_temp.append((v_idx, -2**constraint.children[0].width))
+			b_u.append(constraint.extract_constant().value)
+			b_l.append(b_u[-1])
+			A.append(A_temp)
+			v_idx += 2
 
-		A_eq_matrix = [[0]*v_idx for i in range(len(A_eq))]
-		b_eq_matrix = [0]*len(A_eq)
-		A_ub_matrix = [[0]*v_idx for i in range(len(A_eq))]
-		b_ub_matrix = [0]*len(A_eq)
+		A_matrix = [[0]*v_idx for i in range(len(A))]
+		b_u_matrix = [0]*len(A)
+		b_l_matrix = [0]*len(A)
 		bounds_matrix = [(None, None)]*v_idx
 		c_matrix = [0]*v_idx
 
-		for i in range(len(A_eq)):
-			for j in A_eq[i]:
+		for i in range(len(A)):
+			for j in A[i]:
 				if j[0] is not None:
-					A_eq_matrix[i][j[0]] = j[1]
-			b_eq_matrix[i] = b_eq[i]
-		for i in range(len(A_ub)):
-			for j in A_ub[i]:
-				if j[0] is not None:
-					A_ub_matrix[i][j[0]] = j[1]
-			b_ub_matrix[i] = b_ub[i]
+					A_matrix[i][j[0]] = j[1]
+			b_u_matrix[i] = b_u[i]
+			b_l_matrix[i] = b_l[i]
 		for i in bounds:
 			bounds_matrix[i[0]] = (i[1], i[2])
 		for value in v_idx_map.values():
 			c_matrix[value] = 1
 
-		print(A_eq_matrix)
-		print(b_eq_matrix)
-		print(A_ub_matrix)
-		print(b_ub_matrix)
+		print(A_matrix)
+		print(b_u_matrix)
+		print(b_l_matrix)
 		print(bounds_matrix)
 		print(c_matrix)
-		solution = self.solve_ilp(c_matrix, A_ub_matrix, b_ub_matrix, A_eq_matrix, b_eq_matrix, bounds_matrix)
+		solution = self.solve_ilp(c_matrix, A_matrix, b_u_matrix, b_l_matrix, bounds_matrix)
 		print()
 		print("SOLUTION")
 		ret = {}
@@ -139,24 +133,20 @@ class Solver:
 	# Finds an integer solution to the ILP problem (not necessarily optimal.
 	# Bounds are expected to have a min bound of 0. I.e. (0, None), without loss of generality.
 	# Returns tuple (x : vector of solutions)
-	def solve_ilp(self, c, A_ub, b_ub, A_eq, b_eq, bounds):
-		res = scipy.optimize.linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
-		if not res.success:
+	def solve_ilp(self, c_matrix, A_matrix, b_u_matrix, b_l_matrix, bounds_matrix):
+		constraints = scipy.optimize.LinearConstraint(A_matrix, b_l_matrix, b_u_matrix)
+		integrality = np.ones_like(c_matrix)
+		bounds = scipy.optimize.Bounds(lb=[i[0] for i in bounds_matrix], ub=[i[1] for i in bounds_matrix])
+		print("Start solving")
+		# solution = scipy.optimize.milp(c=c_matrix, constraints=constraints, integrality=integrality, bounds=bounds, options={"time_limit":1})
+		solution = scipy.optimize.milp(c=c_matrix, constraints=constraints, integrality=integrality)
+		print(constraints)
+		print(integrality)
+		print(bounds)
+		print(solution)
+		if not solution.success:
 			return None
-		for i in range(len(res.x)):
-			x = res.x[i]
-			if np.ceil(x) != x:
-				# Branch and bound
-				new_bounds = bounds[:]
-				new_bounds[i] = (bounds[i][0], np.floor(x))
-				res = self.solve_ilp(c, A_ub, b_ub, A_eq, b_eq, new_bounds)
-				if res is not None:
-					return res
-				new_bounds = bounds[:]
-				new_bounds[i] = (np.ceil(x), bounds[i][1])
-				res = self.solve_ilp(c, A_ub, b_ub, A_eq, b_eq, new_bounds)
-				return res
-		return [int(i) for i in res.x]
+		return [round(i) for i in solution.x]
 
 # Let's try solving:
 # A + B <= 5
@@ -176,55 +166,52 @@ class Solver:
 
 # s.solve()
 
-A = BitVec("A", 4)
-s = Solver()
-s.add(A * 7 == 3)
-print(s.solve())
+# s = Solver()
+# s2 = bSolver()
 
-exit()
+# N = 4
+# MAX = 2**10
+# BITS = 32
 
+# array = np.random.randint(0, MAX, size=(N, N))
+# while np.linalg.matrix_rank(array) != N:
+# 	array = np.random.randint(0, MAX, size=(N, N))
+# x = np.random.randint(0, MAX, size=(N, 1))
+# b = array @ x
+# for i in b:
+# 	assert i < 2**BITS
 
-s = Solver()
-s2 = bSolver()
+# print("ARRAY", array)
+# print("X", x)
+# print("B", b)
 
-N = 1
-MAX = 1000
+# variables = [BitVec("A" + str(i), BITS) for i in range(N)]
+# for row in range(N):
+# 	expression = []
+# 	for col in range(N):
+# 		expression.append(BitVecVal(int(array[row][col]), BITS) * variables[col])
+# 	expression = reduce(lambda x,y:x + y, expression)
+# 	print(expression)
+# 	s.add(expression == BitVecVal(int(b[row]), BITS))
+# 	s2.add(expression == BitVecVal(int(b[row]), BITS))
 
-array = np.random.randint(0, MAX, size=(N, N))
-while np.linalg.matrix_rank(array) != N:
-	array = np.random.randint(0, MAX, size=(N, N))
-x = np.random.randint(0, MAX, size=(N, 1))
-b = array @ x
-for i in b:
-	assert i < 2**31
+# print("CONJUNCTIONS")
+# for i in s.conjunction:
+# 	print(i)
 
-print("ARRAY", array)
-print("X", x)
-print("B", b)
-
-variables = [BitVec("A" + str(i), 32) for i in range(N)]
-for row in range(N):
-	expression = []
-	for col in range(N):
-		expression.append(BitVecVal(int(array[row][col]), 32) * variables[col])
-	expression = reduce(lambda x,y:x + y, expression)
-	print(expression)
-	s.add(expression == BitVecVal(int(b[row]), 32))
-	s2.add(expression == BitVecVal(int(b[row]), 32))
-
-print("CONJUNCTIONS")
-for i in s.conjunction:
-	print(i)
-
-ret = s.solve()
+# ret = s.solve()
 
 # print(ret)
 
 # x_solve = np.zeros((N, 1), dtype=np.longlong)
 # for i in range(N):
 # 	x_solve[i] = ret["A" + str(i)]
-# print(x_solve)
-# print(array @ x_solve)
+# assert(all(b == array @ x_solve))
 
 # ret = s2.solve()
 # print(ret)
+
+A = BitVec("A", 28)
+s = Solver()
+s.add(A * 123124124 == 231974516)
+print(s.solve())
