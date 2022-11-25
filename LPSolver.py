@@ -27,6 +27,7 @@ class Solver:
 		# 	self.conjunction[i] = self.conjunction[i].tree_rotation()
 		for i in range(len(self.conjunction)):
 			self.conjunction[i] = self.conjunction[i].constant_simplify()
+			print(self.conjunction[i])
 
 		# step 2. encode linear expression by labeling each node as a new variable
 		self.v_idx_map = {} # Maps variable name to v_idx
@@ -85,7 +86,7 @@ class Solver:
 	# b_u : List[value]
 	# b_l : List[value]
 	# bounds : List[Tuple(v_idx, min, max)]
-	def encode_lp(self, expr:ExprNode, do_mod=False):
+	def encode_lp(self, expr:ExprNode, do_mod=True):
 		if isinstance(expr, FunctionNode):
 			expr.value = 0
 			A, b_u, b_l, bounds = self.encode_lp(expr.children[0])
@@ -141,14 +142,58 @@ class Solver:
 					# left * right - expr - 2^n * mod == 0
 					if isinstance(right, ConstantNode): 
 						left, right = right, left
-					if do_mod:
-						A += [[(right.v_idx, left.value), (expr.v_idx, -1), (mod, -2**expr.width)]]
-						bounds += [(mod, 0, 2**expr.width - 1), (expr.v_idx, 0, 2**expr.width - 1)]
+					if isinstance(left, ConstantNode):
+						if do_mod:
+							A += [[(right.v_idx, left.value), (expr.v_idx, -1), (mod, -2**expr.width)]]
+							bounds += [(mod, 0, 2**expr.width - 1), (expr.v_idx, 0, 2**expr.width - 1)]
+						else:
+							A += [[(right.v_idx, left.value), (expr.v_idx, -1)]]
+							bounds += [(expr.v_idx, 0, 2**expr.width - 1)]
+						b_l += [0]
+						b_u += [0]
 					else:
-						A += [[(right.v_idx, left.value), (expr.v_idx, -1)]]
-						bounds += [(expr.v_idx, 0, 2**expr.width - 1)]
-					b_l += [0]
-					b_u += [0]
+						constraint = [(left.v_idx, 1)]
+						left_bits_v_idx = []
+						for i in range(expr.width):
+							# left == (v_idx) * 2^0 + (v_idx_1) * 2^1 + (v_idx_2) * 2^2 ...
+							constraint.append((self.v_idx, -2**i))
+							left_bits_v_idx.append(self.v_idx)
+							bounds.append((self.v_idx, 0, 1))
+							self.v_idx += 1
+						A.append(constraint)
+						b_l.append(0)
+						b_u.append(0)
+
+						L = 2**expr.width - 1
+
+						p_bits_v_idx = []
+						for i in range(expr.width):
+
+							# P[i] - L * left[i] <= 0
+							# P[i] - right - L*left[i] >= -L
+							# 0 <= P[i] <= Y
+							A.append([(self.v_idx, 1), (left_bits_v_idx[i], -L)])
+							b_l.append(-L)
+							b_u.append(0)
+							A.append([(self.v_idx, 1), (right.v_idx, -1), (left_bits_v_idx[i], -L)])
+							b_l.append(-L)
+							b_u.append(L)
+							A.append([(self.v_idx, 1), (right.v_idx, -1)])
+							b_l.append(-L)
+							b_u.append(0)
+							p_bits_v_idx.append(self.v_idx)
+							self.v_idx += 1
+
+						expr.v_idx = self.v_idx
+						constraint = [(expr.v_idx, 1)]
+						self.v_idx += 1
+						for i in range(expr.width):
+							# Z = z[0] * 2^0 + z[1] * 2^1 + ...
+							constraint.append((p_bits_v_idx[i], -2**i))
+						A.append(constraint)
+						b_l.append(0)
+						b_u.append(0)
+						bounds.append((expr.v_idx, 0, 2**expr.width - 1))
 				elif expr.func_type == FunctionEnum.BITWISE_AND:
 					# Expand both left and right into bits
 					constraint = [(left.v_idx, 1)]
@@ -305,13 +350,14 @@ class Solver:
 				elif expr.func_type == FunctionEnum.LE:
 					# A <= B
 					A += [[(left.v_idx, 1), (right.v_idx, -1)]]
-					b_l += [-np.inf]
+					b_l += [-(2**left.width - 1)]
 					b_u += [0 - left.value + right.value]
 				elif expr.func_type == FunctionEnum.GE:
-					# B <= A
-					A += [[(left.v_idx, -1), (right.v_idx, 1)]]
-					b_l += [0 + left.value - right.value]
-					b_u += [np.inf]
+					# A >= B
+					A += [[(left.v_idx, 1), (right.v_idx, -1)]]
+					b_l += [0 - left.value + right.value]
+					b_u += [2**left.width - 1]
+					print(A[-1], b_l[-1], b_u[-1])
 				return A, b_u, b_l, bounds
 		elif isinstance(expr, ConstantNode):
 			expr.v_idx = None
@@ -343,45 +389,25 @@ class Solver:
 			return None
 		return [round(i) for i in solution.x]
 
-	# Finds an integer solution to the ILP problem (not necessarily optimal.
-	# Bounds are expected to have a min bound of 0. I.e. (0, None), without loss of generality.
-	# Returns tuple (x : vector of solutions)
-	def solve_ilp(self, c, A_ub, b_ub, A_eq, b_eq, bounds):
-		res = scipy.optimize.linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
-		if not res.success:
-			return None
-		for i in range(len(res.x)):
-			x = res.x[i]
-			if np.ceil(x) != x:
-				# Branch and bound
-				new_bounds = bounds[:]
-				new_bounds[i] = (bounds[i][0], np.floor(x))
-				res = self.solve_ilp(c, A_ub, b_ub, A_eq, b_eq, new_bounds)
-				if res is not None:
-					return res
-				new_bounds = bounds[:]
-				new_bounds[i] = (np.ceil(x), bounds[i][1])
-				res = self.solve_ilp(c, A_ub, b_ub, A_eq, b_eq, new_bounds)
-				return res
-		return [int(i) for i in res.x]
-
 # Let's try solving:
 # A + B <= 5
 # A + B >= 2
 
-# s = Solver()
-# A = BitVec("A", 32)
-# B = BitVec("B", 32)
-# C = BitVec("C", 32)
+s = Solver()
+A = BitVec("A", 23)
+B = BitVec("B", 16)
+C = BitVec("C", 16)
 # s.add(~A == 7)
 # s.add(A + 2 == 3)
 # s.add((A + BitVecVal(5, 32) * (B + 3)) & C == 1337)
-# print(s.solve())
-# exit()
+# (x - 1)(x - 1) = 0
+s.add(A * A - A * 8 + 15 == 0)
+print(s.solve())
+exit()
 
 s = Solver()
 
-N = 150
+N = 5
 MAX = 2000
 BITS = 32
 
