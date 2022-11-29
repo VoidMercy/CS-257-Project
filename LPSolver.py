@@ -27,7 +27,6 @@ class Solver:
 		# 	self.conjunction[i] = self.conjunction[i].tree_rotation()
 		for i in range(len(self.conjunction)):
 			self.conjunction[i] = self.conjunction[i].constant_simplify()
-			print(self.conjunction[i])
 
 		# step 2. encode linear expression by labeling each node as a new variable
 		self.v_idx_map = {} # Maps variable name to v_idx
@@ -37,14 +36,14 @@ class Solver:
 		b_l = []
 		bounds = []
 		for expr in self.conjunction:
-			print(expr)
+			# print(expr)
 			A_, b_u_, b_l_, bounds_ = self.encode_lp(expr)
 			A += A_
 			b_u += b_u_
 			b_l += b_l_
 			bounds += bounds_
 
-		print("DONE ENCODE")
+		# print("DONE ENCODE")
 		A_matrix = np.zeros((len(A), self.v_idx), dtype=np.longlong)
 		b_u_matrix = np.zeros((len(A)), dtype=np.longlong)
 		b_l_matrix = np.zeros((len(A)), dtype=np.longlong)
@@ -54,7 +53,7 @@ class Solver:
 		bounds_matrix = [(0, np.inf)]*self.v_idx
 		c_matrix      = np.zeros((self.v_idx), dtype=np.longlong)
 
-		print("DONE CREATING MATRIX")
+		# print("DONE CREATING MATRIX")
 		for i in range(len(A)):
 			for j in A[i]:
 				if j[0] is not None:
@@ -69,16 +68,17 @@ class Solver:
 		for value in self.v_idx_map.values():
 			c_matrix[value] = 1
 
-		print("DONE ENCODING MATRIX")
+		# print("DONE ENCODING MATRIX")
 		solution = self.solve_milp(c_matrix, A_matrix, b_u_matrix, b_l_matrix, bounds_matrix)
-		print()
-		print("SOLUTION")
+		# print()
+		# print("SOLUTION")
 		ret = {}
 		if solution is not None:
 			for v_name, v_idx in self.v_idx_map.items():
 				ret[v_name] = solution[v_idx]
 		else:
 			print("UNSAT")
+			return None
 		return ret
 
 	# Returns (A_eq constraints, b_eq constraints, bounds constraints)
@@ -86,7 +86,7 @@ class Solver:
 	# b_u : List[value]
 	# b_l : List[value]
 	# bounds : List[Tuple(v_idx, min, max)]
-	def encode_lp(self, expr:ExprNode, do_mod=True):
+	def encode_lp(self, expr:ExprNode, do_mod=False):
 		if isinstance(expr, FunctionNode):
 			expr.value = 0
 			A, b_u, b_l, bounds = self.encode_lp(expr.children[0])
@@ -357,7 +357,6 @@ class Solver:
 					A += [[(left.v_idx, 1), (right.v_idx, -1)]]
 					b_l += [0 - left.value + right.value]
 					b_u += [2**left.width - 1]
-					print(A[-1], b_l[-1], b_u[-1])
 				return A, b_u, b_l, bounds
 		elif isinstance(expr, ConstantNode):
 			expr.v_idx = None
@@ -381,57 +380,59 @@ class Solver:
 		bounds = scipy.optimize.Bounds(lb=[i[0] for i in bounds_matrix], ub=[i[1] for i in bounds_matrix])
 		# print("BOUNDS", bounds)
 		# exit()
-		print("Start solving")
+		# print("Start solving")
 		solution = scipy.optimize.milp(c=c_matrix, constraints=constraints, integrality=integrality, bounds=bounds)
 		# solution = scipy.optimize.milp(c=c_matrix, constraints=constraints, integrality=integrality)
-		print(solution)
+		# print(solution)
 		if not solution.success:
 			return None
 		return [round(i) for i in solution.x]
 
-# Let's try solving:
-# A + B <= 5
-# A + B >= 2
+if __name__ == "__main__":
+	# Let's try solving:
+	# A + B <= 5
+	# A + B >= 2
 
-s = Solver()
-A = BitVec("A", 23)
-B = BitVec("B", 16)
-C = BitVec("C", 16)
-# s.add(~A == 7)
-# s.add(A + 2 == 3)
-# s.add((A + BitVecVal(5, 32) * (B + 3)) & C == 1337)
-# (x - 1)(x - 1) = 0
-s.add(A * A - A * 8 + 15 == 0)
-print(s.solve())
-exit()
+	# s = Solver()
+	# A = BitVec("A", 23)
+	# B = BitVec("B", 16)
+	# C = BitVec("C", 16)
+	# s.add(~A == 7)
+	# s.add(A + 2 == 3)
+	# s.add((A + BitVecVal(5, 32) * (B + 3)) & C == 1337)
+	# (x - 1)(x - 1) = 0
+	# s.add(A * A - A * 8 + 15 == 0)
+	# s.add(A >= 5)
+	# print(s.solve())
+	# exit()
 
-s = Solver()
+	s = Solver()
 
-N = 5
-MAX = 2000
-BITS = 32
+	N = 5
+	MAX = 2000
+	BITS = 32
 
-array = np.random.randint(0, MAX, size=(N, N))
-x = np.random.randint(0, MAX, size=(N, 1))
-print("X", x)
-b = array @ x
-for i in b:
-	assert i < 2**(BITS)
+	array = np.random.randint(0, MAX, size=(N, N))
+	x = np.random.randint(0, MAX, size=(N, 1))
+	print("X", x)
+	b = array @ x
+	for i in b:
+		assert i < 2**(BITS)
 
-variables = [BitVec("A" + str(i), BITS) for i in range(N)]
-for row in range(N):
-	expression = []
-	for col in range(N):
-		expression.append(BitVecVal(int(array[row][col]), BITS) * variables[col])
-	expression = reduce(lambda x,y:x + y, expression)
-	s.add(expression == BitVecVal(int(b[row]), BITS))
+	variables = [BitVec("A" + str(i), BITS) for i in range(N)]
+	for row in range(N):
+		expression = []
+		for col in range(N):
+			expression.append(BitVecVal(int(array[row][col]), BITS) * variables[col])
+		expression = reduce(lambda x,y:x + y, expression)
+		s.add(expression == BitVecVal(int(b[row]), BITS))
 
-ret = s.solve()
+	ret = s.solve()
 
-print("RET", ret)
+	print("RET", ret)
 
-x_solve = np.zeros((N, 1), dtype=np.longlong)
-for i in range(N):
-	x_solve[i] = ret["A" + str(i)]
-assert(all(b == array @ x_solve))
+	x_solve = np.zeros((N, 1), dtype=np.longlong)
+	for i in range(N):
+		x_solve[i] = ret["A" + str(i)]
+	assert(all(b == array @ x_solve))
 
