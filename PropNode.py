@@ -117,14 +117,3 @@ class PropConstant(PropNode):
 		return str(self)
 	def z3_convert(self, var_map):
 		return self.v == 1
-
-class PropDecisionPoint(PropNode):
-	def __init__(self, v):
-		assert v == 0 or v == 1
-		self.v = v
-	def __str__(self):
-		return str(self.v)
-	def __repr__(self):
-		return str(self)
-	def z3_convert(self, var_map):
-		return self.v == 1
