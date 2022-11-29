@@ -157,6 +157,7 @@ class Solver:
 	def z3_solve(self, variables:List[str], wff:PropNode):
 		z3_mapping = {v.name: z3.Bool(v.name) for v in variables} # Name to z3 Bool mapping
 		constraint = wff.convert_z3(z3_mapping)
+		print(constraint)
 		s = z3.Solver()
 		s.add(constraint)
 		if s.check() == z3.sat:

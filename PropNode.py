@@ -48,6 +48,31 @@ class PropNode:
 	def __init__(self):
 		pass
 
+	def __eq__(self, other):
+		if isinstance(self, PropVariable) and isinstance(other, PropVariable):
+			return self.name == other.name
+		if isinstance(self, PropConstant) and isinstance(other, PropConstant):
+			return self.v == other.v
+		if isinstance(self, PropFunction) and isinstance(other, PropFunction):
+			return (self.left == other.left) and (self.right == other.right)
+		return False
+
+	def __hash__(self):
+		if isinstance(self, PropVariable): return hash(self.name)
+		if isinstance(self, PropConstant): return hash(self.v)
+		if isinstance(self, PropFunction): return hash((self.op, self.left.__hash__(), self.right.__hash__()))
+
+	def __lt__(self, other):
+		if isinstance(self, PropVariable) and isinstance(other, PropVariable):
+			return self.name < other.name
+		if isinstance(self, PropConstant) and isinstance(other, PropConstant):
+			return self.v < other.v
+		if isinstance(self, PropFunction) and isinstance(other, PropFunction):
+			if self.left < other.left: return True
+			if self.left == other.left: return self.right < other.right
+			return False
+		return False
+
 class PropFunction(PropNode):
 	def __init__(self, op, left, right):
 		self.op = op
@@ -83,6 +108,17 @@ class PropVariable(PropNode):
 		return var_map[self.name]
 
 class PropConstant(PropNode):
+	def __init__(self, v):
+		assert v == 0 or v == 1
+		self.v = v
+	def __str__(self):
+		return str(self.v)
+	def __repr__(self):
+		return str(self)
+	def z3_convert(self, var_map):
+		return self.v == 1
+
+class PropDecisionPoint(PropNode):
 	def __init__(self, v):
 		assert v == 0 or v == 1
 		self.v = v
