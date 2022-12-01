@@ -15,15 +15,11 @@ class SAT:
         # work for each node
         def helper(wff: PropNode, top: PropVariable, counter: int) -> (list, int, bool, PropVariable, bool, PropVariable):
             a = top
-            #print(wff, wff.left, type(wff), type(wff.left), isinstance(wff.left, PropVariable))
             if isinstance(wff.left, PropVariable): p, l = wff.left, False
             else: (p, counter), l = generate_var(counter), True
             if isinstance(wff.right, PropVariable): q, r = wff.right, False
             else: (q, counter), r = generate_var(counter), True
             if wff.op == PropEnum.OR:
-                # return [PropOr(a, PropNot(p)),
-                #         PropOr(a, PropNot(q)),
-                #         PropOr(p, PropOr(q, PropNot(a)))], counter, l, p, r, q
                 return [[a, PropNot(p)], [a, PropNot(q)], [p, q, PropNot(a)]], counter, l, p, r, q
             elif wff.op == PropEnum.AND:
                 # return [PropOr(a, PropOr(PropNot(p), PropNot(q))),
@@ -58,9 +54,9 @@ class SATSolver:
             if l in clause: self.delta[i][1] = b
 
     def check_delta(self):
-        for literal in M:
+        for literal in self.M:
             if literal == ".": continue
-            update_delta(literal, False)
+            self.update_delta(literal, False)
 
     def find_level(self, l):
         cnt = 0
@@ -158,15 +154,9 @@ class SATSolver:
                 if i < lev: i += 1
             if i == max_level: return False
             ind = [i for i, n in enumerate(self.M) if n == "."][i - 1]
-            print("before appending:")
-            print(self.M)
-            print(self.delta)
             self.M = self.M[:ind]
             self.M.append(l)
-            check_delta()
-            print("after appending:")
-            print(self.M)
-            print(self.delta)
+            self.check_delta()
             return True
 
         # return True if failed
@@ -176,22 +166,15 @@ class SATSolver:
 
         while not self.check_sat():
             if conflict():
-                while not backjump():
-                    # print("after backjumping")
+                explain()
+                if not backjump():
                     explain()
-                    # print("after explain")
                     if fail():
                         return None
-            # print("before propageting")
             if not propagate():
-                # print("after propagating")
                 decide()
-                # print("inside decide if")
                 if fail():
-                    # print("fail")
                     return None
-            # print("M:", self.M)
-            # print("delta:", self.delta)
 
         if self.check_sat():
             ret = {l: True for l in [l if isinstance(l, PropVariable) else PropNot(l) for clause, _ in self.delta for l in clause]}
@@ -202,26 +185,23 @@ class SATSolver:
 
 
 if __name__ == "__main__":
-    # c = PropOr(PropVariable("a"), PropVariable("b"))
-    # s = SAT(c)
-    # s.wff_to_CNF()
-    # # print(s.constraints)
-    # solver = SATSolver(s.constraints)
-    # print(solver.solve())
-    #
-    # c = PropAnd(PropVariable("a"), PropVariable("b"))
-    # s = SAT(c)
-    # s.wff_to_CNF()
-    # # print(s.constraints)
-    # solver = SATSolver(s.constraints)
-    # print(solver.solve())
-    #
-    # c = PropNot(PropVariable("a"))
-    # s = SAT(c)
-    # s.wff_to_CNF()
-    # # print(s.constraints)
-    # solver = SATSolver(s.constraints)
-    # print(solver.solve())
+    c = PropOr(PropVariable("a"), PropVariable("b"))
+    s = SAT(c)
+    s.wff_to_CNF()
+    solver = SATSolver(s.constraints)
+    print(solver.solve())
+
+    c = PropAnd(PropVariable("a"), PropVariable("b"))
+    s = SAT(c)
+    s.wff_to_CNF()
+    solver = SATSolver(s.constraints)
+    print(solver.solve())
+
+    c = PropNot(PropVariable("a"))
+    s = SAT(c)
+    s.wff_to_CNF()
+    solver = SATSolver(s.constraints)
+    print(solver.solve())
 
     c1 = PropAnd(PropVariable("a"), PropVariable("b"))
     c2 = PropOr(PropVariable("c"), PropVariable("d"))
@@ -230,27 +210,49 @@ if __name__ == "__main__":
     c5 = PropAnd(c3, c4)
     s = SAT(c5)
     s.wff_to_CNF()
-    print(s.constraints)
     solver = SATSolver(s.constraints)
     print(solver.solve())
 
-    # c1 = [PropVariable("1")]
-    # c2 = [PropVariable("1"), PropNot(PropVariable("2"))]
-    # c3 = [PropVariable("1"), PropNot(PropVariable("3"))]
-    # c4 = [PropVariable("2"), PropVariable("3"), PropNot(PropVariable("1"))]
-    # s = SATSolver([c1, c2, c3, c4])
-    # print(s.solve())
-    #
-    # c1 = [PropVariable("1")]
-    # c2 = [PropNot(PropVariable("1")), PropVariable("2")]
-    # c3 = [PropNot(PropVariable("3")), PropVariable("4")]
-    # c4 = [PropNot(PropVariable("5")), PropNot(PropVariable("6"))]
-    # c5 = [PropNot(PropVariable("1")), PropNot(PropVariable("5")), PropVariable("7")]
-    # c6 = [PropNot(PropVariable("2")), PropNot(PropVariable("5")), PropVariable("6"), PropNot(PropVariable("7"))]
-    # s = SATSolver([c1, c2, c3, c4, c5, c6])
-    # # s.M = [PropVariable("1"), PropVariable("2"), ".", PropVariable("3"), PropVariable("4"), ".", PropVariable("5"), PropNot(PropVariable("6")), PropVariable("7")]
-    # print(s.solve())
-    # c1 = [PropVariable("1")]
-    # c2 = [PropNot(PropVariable("1"))]
-    # s = SATSolver([c1, c2])
-    # print(s.solve())
+    c1 = [PropVariable("1")]
+    c2 = [PropVariable("1"), PropNot(PropVariable("2"))]
+    c3 = [PropVariable("1"), PropNot(PropVariable("3"))]
+    c4 = [PropVariable("2"), PropVariable("3"), PropNot(PropVariable("1"))]
+    s = SATSolver([c1, c2, c3, c4])
+    print(s.solve())
+
+    c1 = [PropVariable("1")]
+    c2 = [PropNot(PropVariable("1")), PropVariable("2")]
+    c3 = [PropNot(PropVariable("3")), PropVariable("4")]
+    c4 = [PropNot(PropVariable("5")), PropNot(PropVariable("6"))]
+    c5 = [PropNot(PropVariable("1")), PropNot(PropVariable("5")), PropVariable("7")]
+    c6 = [PropNot(PropVariable("2")), PropNot(PropVariable("5")), PropVariable("6"), PropNot(PropVariable("7"))]
+    s = SATSolver([c1, c2, c3, c4, c5, c6])
+    print(s.solve())
+    c1 = [PropVariable("1")]
+    c2 = [PropNot(PropVariable("1"))]
+    s = SATSolver([c1, c2])
+    print(s.solve())
+
+    s, a, b = PropVariable("s"), PropVariable("a"), PropVariable("b")
+    c1 = PropAnd(PropAnd(s, PropNot(b)), PropNot(a))
+    c2 = PropAnd(PropAnd(PropNot(s), b), PropNot(a))
+    c3 = PropAnd(PropAnd(PropNot(s), PropNot(b)), a)
+    c4 = PropOr(c1, c2)
+    c5 = PropOr(c3, c4)
+    s = SAT(c5)
+    s.wff_to_CNF()
+    solver = SATSolver(s.constraints)
+    print(solver.solve())
+
+    p, q, r, s = PropVariable("p"), PropVariable("q"), PropVariable("r"), PropVariable("s")
+    a = PropAnd(p, q)
+    b = PropOr(a, PropNot(r))
+    c = PropOr(b, PropNot(s))
+    d = PropOr(r, PropNot(s))
+    e = PropOr(d, PropNot(p))
+    f = PropOr(e, PropNot(s))
+    g = PropOr(c, PropNot(f))
+    s = SAT(g)
+    s.wff_to_CNF()
+    solver = SATSolver(s.constraints)
+    print(solver.solve())
