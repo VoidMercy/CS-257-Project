@@ -77,7 +77,6 @@ class Solver:
 			for v_name, v_idx in self.v_idx_map.items():
 				ret[v_name] = solution[v_idx]
 		else:
-			print("UNSAT")
 			return None
 		return ret
 
@@ -143,7 +142,7 @@ class Solver:
 					if isinstance(right, ConstantNode): 
 						left, right = right, left
 					if isinstance(left, ConstantNode):
-						if do_mod:
+						if do_mod and False:
 							A += [[(right.v_idx, left.value), (expr.v_idx, -1), (mod, -2**expr.width)]]
 							bounds += [(mod, 0, 2**expr.width - 1), (expr.v_idx, 0, 2**expr.width - 1)]
 						else:
@@ -393,10 +392,13 @@ if __name__ == "__main__":
 	# A + B <= 5
 	# A + B >= 2
 
-	# s = Solver()
-	# A = BitVec("A", 23)
-	# B = BitVec("B", 16)
-	# C = BitVec("C", 16)
+	s = Solver()
+	A = BitVec("A", 16)
+	B = BitVec("B", 16)
+	C = BitVec("C", 16)
+	s.add(A * B == 13 * 6)
+	print(s.solve())
+	exit()
 	# s.add(~A == 7)
 	# s.add(A + 2 == 3)
 	# s.add((A + BitVecVal(5, 32) * (B + 3)) & C == 1337)
