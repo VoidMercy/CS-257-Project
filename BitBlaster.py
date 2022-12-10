@@ -5,6 +5,7 @@ from ExprNode import *
 from PropNode import *
 from typing import List, Tuple
 from functools import reduce
+from SATSolver import *
 
 sys.setrecursionlimit(200000)
 
@@ -16,7 +17,7 @@ class Solver:
 	def add(self, expression:ExprNode):
 		self.conjunction.append(expression)
 
-	def solve(self):
+	def solve(self, solver = 0):
 		expression = reduce(lambda x,y: And(x, y), self.conjunction)
 		prop_vars, equation, variables = self.BitBlast(expression)
 		assert len(prop_vars) == 1
@@ -26,11 +27,17 @@ class Solver:
 		# print(self.theory_prop_map)
 
 		# SAT solve with z3
-		model = self.z3_solve(variables, equation)
-		if model is None:
-			return False
+		if solver == 0:
+			model = self.z3_solve(variables, equation)
+			if model is None:
+				return False
+			else:
+				return model
 		else:
-			return model
+			model = self.sat_solve(variables, equation)
+			if model is None:
+				return False
+			else: return model
 
 	def BitBlast(self, node:ExprNode, v_idx=0) -> Tuple[List[PropNode], PropNode, List[str]]:
 		if isinstance(node, ConstantNode):
@@ -175,6 +182,23 @@ class Solver:
 		else:
 			return None
 
+	def sat_solve(self, variables:List[str], wff:PropNode):
+		s = SAT(wff)
+		s.wff_to_CNF()
+		solver = SATSolver(s.constraints)
+		res = solver.solve()
+		if res:
+			model : dict[VariableNode, ConstantNode] = {}
+			for variable_node, prop_variables in self.theory_prop_map.items():
+				concrete_bits = [res[i.name] if i.name in res.keys() else True for i in prop_variables]
+				value = 0
+				for b in concrete_bits:
+					value = value << 1
+					if b: value |= 1
+				model [variable_node] = ConstantNode(value, variable_node.width)
+			return model
+		return None
+
 if __name__ == "__main__":
 	a = BitVec("A", 5)
 	b = BitVec("B", 5)
@@ -183,12 +207,16 @@ if __name__ == "__main__":
 
 	s.add(BitVecVal(5, 5) & a == BitVecVal(1, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model, "\n")
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(BitVecVal(0, 5) | a == BitVecVal(3, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model, "\n")
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(BitVecVal(5, 5) ^ a == BitVecVal(3, 5))
