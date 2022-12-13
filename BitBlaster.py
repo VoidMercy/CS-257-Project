@@ -22,9 +22,6 @@ class Solver:
 		prop_vars, equation, variables = self.BitBlast(expression)
 		assert len(prop_vars) == 1
 		equation = PropAnd(equation, prop_vars[0])
-		# print("Expression", expression)
-		# print(equation)
-		# print(self.theory_prop_map)
 
 		# SAT solve with z3
 		if solver == 0:
@@ -185,8 +182,11 @@ class Solver:
 	def sat_solve(self, variables:List[str], wff:PropNode):
 		s = SAT(wff)
 		s.wff_to_CNF()
-		solver = SATSolver(s.constraints)
-		res = solver.solve()
+		s.prepare_solver()
+		solver = SATSolver(s.pass_to_sat, s.pass_to_sat_var)
+		assignment = solver.solve()
+		s.assign_valid(assignment)
+		res = s.assign
 		if res:
 			model : dict[VariableNode, ConstantNode] = {}
 			for variable_node, prop_variables in self.theory_prop_map.items():

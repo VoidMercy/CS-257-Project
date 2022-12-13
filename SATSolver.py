@@ -64,7 +64,9 @@ class SAT:
         self.match = dict([(v, k) for k, v in d.items() if k in self.original_vars])
 
     def assign_valid(self, assignment):
-        if not assignment: self.assign = None
+        if not assignment:
+            self.assign = None
+            return
         for atom, val in assignment.items():
             if atom in self.match.keys():
                 self.assign[atom] = val
