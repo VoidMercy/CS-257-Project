@@ -185,7 +185,7 @@ class Solver:
 		solver = SATSolver(s.pass_to_sat, s.pass_to_sat_var)
 		assignment = solver.solve()
 		s.assign_valid(assignment)
-		res = s.assign\
+		res = s.assign
 		if res:
 			model : dict[VariableNode, ConstantNode] = {}
 			for variable_node, prop_variables in self.theory_prop_map.items():
