@@ -165,7 +165,6 @@ class Solver:
 		s.add(constraint)
 		if s.check() == z3.sat:
 			m = s.model()
-
 			model : dict[VariableNode, ConstantNode] = {}
 			for variable_node, prop_variables in self.theory_prop_map.items():
 				concrete_bits = [m[z3_mapping[i.name]] for i in prop_variables]
@@ -186,11 +185,11 @@ class Solver:
 		solver = SATSolver(s.pass_to_sat, s.pass_to_sat_var)
 		assignment = solver.solve()
 		s.assign_valid(assignment)
-		res = s.assign
+		res = s.assign\
 		if res:
 			model : dict[VariableNode, ConstantNode] = {}
 			for variable_node, prop_variables in self.theory_prop_map.items():
-				concrete_bits = [res[i.name] if i.name in res.keys() else True for i in prop_variables]
+				concrete_bits = [res[i] if i in res.keys() else False for i in prop_variables]
 				value = 0
 				for b in concrete_bits:
 					value = value << 1
@@ -207,77 +206,97 @@ if __name__ == "__main__":
 
 	s.add(BitVecVal(5, 5) & a == BitVecVal(1, 5))
 	model = s.solve()
-	print("z3, Model:", model, "\n")
+	print("z3, Model:", model)
 	model = s.solve(1)
 	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(BitVecVal(0, 5) | a == BitVecVal(3, 5))
 	model = s.solve()
-	print("z3, Model:", model, "\n")
+	print("z3, Model:", model)
 	model = s.solve(1)
 	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(BitVecVal(5, 5) ^ a == BitVecVal(3, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(~a == BitVecVal(3, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	left = a & BitVecVal(0b11110, 5) == BitVecVal(0b10100, 5)
 	right = a & BitVecVal(0b00001, 5) == BitVecVal(0b00001, 5)
 	s.add(And(left, right))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	left = a & BitVecVal(0b11110, 5) == BitVecVal(0b10100, 5)
 	right = a & BitVecVal(0b00001, 5) == BitVecVal(0b00001, 5)
 	s.add(And(left, right))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	left = a & BitVecVal(0b11110, 5) == BitVecVal(0b10100, 5)
 	right = a & BitVecVal(0b11111, 5) == BitVecVal(0b01101, 5)
 	s.add(Or(left, right))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	left = a & BitVecVal(0b11111, 5) == BitVecVal(0b00000, 5)
 	s.add(Not(left))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	left = Extract(a, 2, 0) == BitVecVal(0b101, 3)
 	right = Extract(a, 4, 3) == BitVecVal(0b01, 2)
 	s.add(And(left, right))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(Concat(a, b) == BitVecVal(0b1100110010, 10))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(a + b == BitVecVal(0b00010, 5))
 	s.add(a == BitVecVal(0b00001, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(a - b == BitVecVal(0b00010, 5))
 	s.add(b == BitVecVal(0b00001, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add((a << BitVecVal(0b00010, 5)) == BitVecVal(0b00100, 5))
