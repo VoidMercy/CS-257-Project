@@ -117,3 +117,12 @@ class PropConstant(PropNode):
 		return str(self)
 	def z3_convert(self, var_map):
 		return self.v == 1
+
+class ImplicationNode:
+    def __init__(self, variable, value):
+        self.variable = variable
+        self.value = value
+        self.level = -1
+        self.parents = []
+        self.children = []
+        self.clause = None
