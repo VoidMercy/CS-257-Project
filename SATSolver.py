@@ -89,6 +89,7 @@ class SATSolver:
         self.branching_cnt = 0
 
     def solve(self):
+        # update the implication graph
         def update_graph(var, clause=None):
             node = self.nodes[var]
             node.value = self.M[var]
@@ -100,6 +101,7 @@ class SATSolver:
                     self.nodes[v].children.append(node)
                 node.clause = clause
 
+        # performing unit propagation rule
         def unit_propagate():
             def compute_value(literal):
                 value = self.M[abs(literal)]
@@ -143,6 +145,7 @@ class SATSolver:
                     update_graph(prop_var, clause=clause)
                     if self.curr_level in self.propagate_hist.keys(): self.propagate_hist[self.curr_level].append(prop_lit)
 
+        # find cause of the conflict
         def conflict_analyze(conflict_clause):
             def next_recent_assigned(clause):
                 for v in reversed(assign_history):
@@ -177,6 +180,7 @@ class SATSolver:
 
             return level, learnt
 
+        # backtracking to the cause and reassign
         def backtrack(level):
             for var, node in self.nodes.items():
                 if node.level <= level: node.children[:] = [child for child in node.children if child.level <= level]
@@ -190,6 +194,7 @@ class SATSolver:
                 del self.branching_hist[k]
                 del self.propagate_hist[k]
 
+        # start the loop of solving
         while not (all(var in self.M for var in self.vars) and not any(var for var in self.vars if self.M[var] == None)):
             conflict_clause = unit_propagate()
             if conflict_clause is not None:
@@ -201,7 +206,6 @@ class SATSolver:
             elif (all(var in self.M for var in self.vars) and not any(var for var in self.vars if self.M[var] == None)):
                 break
             else:
-                # branching
                 self.curr_level += 1
                 self.branching_cnt += 1
                 bt_var, bt_val = next(filter(lambda v: v in self.M and self.M[v] == None, self.vars)), True
