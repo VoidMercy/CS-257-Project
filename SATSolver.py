@@ -102,32 +102,24 @@ class SATSolver:
                 value = self.M[pos_lit(literal)]
                 return value if value == None else value ^ (isinstance(literal, PropFunction))
 
-            def compute_clause(clause):
-                values = list(map(compute_value, clause))
-                return None if None in values else max(values)
-
-            def is_unit_clause(clause):
-                values, unassigned = [], None
-
-                for literal in clause:
-                    value = compute_value(literal)
-                    values.append(value)
-                    unassigned = literal if value == None else unassigned
-
-                ret = ((values.count(False) == len(clause) - 1 and values.count(None) == 1) or
-                         (len(clause) == 1 and values.count(None) == 1))
-                return ret, unassigned
-
             while True:
                 propagate_queue = deque()
                 for clause in [x for x in self.delta.union(self.learnts)]:
-                    clause_val = compute_clause(clause)
+                    values = list(map(compute_value, clause))
+                    clause_val = None if None in values else max(values)
                     if clause_val == True:
                         continue
                     if clause_val == False:
                         return clause
                     else:
-                        is_unit, unit_lit = is_unit_clause(clause)
+                        values, unassigned = [], None
+
+                        for literal in clause:
+                            value = compute_value(literal)
+                            values.append(value)
+                            unassigned = literal if value == None else unassigned
+
+                        is_unit, unit_lit = ((values.count(False) == len(clause) - 1 and values.count(None) == 1) or (len(clause) == 1 and values.count(None) == 1)), unassigned
                         if not is_unit: continue
                         prop_pair = (unit_lit, clause)
                         if prop_pair not in propagate_queue:
@@ -142,15 +134,9 @@ class SATSolver:
 
         # find cause of the conflict
         def conflict(conflict_clause):
-            def next_recent_assigned(clause):
-                for v in reversed(assign_history):
-                    if v in clause or PropNot(v) in clause:
-                        return v, [x for x in clause if pos_lit(x) != pos_lit(v)]
-
             if self.curr_level == 0: return -1, None
 
             assign_history = [self.branching_hist[self.curr_level]] + list(self.propagate_hist[self.curr_level])
-
             pool_lits, done_lits, curr_level_lits, prev_level_lits = conflict_clause, set(), set(), set()
 
             while True:
@@ -160,7 +146,11 @@ class SATSolver:
 
                 if len(curr_level_lits) == 1: break
 
-                last_assigned, others = next_recent_assigned(curr_level_lits)
+                last_assigned, others = None, None
+                for v in reversed(assign_history):
+                    if v in clause or PropNot(v) in clause:
+                        last_assigned, others = v, [x for x in clause if pos_lit(x) != pos_lit(v)]
+                        break
 
                 done_lits.add(pos_lit(last_assigned))
                 curr_level_lits = set(others)
