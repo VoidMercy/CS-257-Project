@@ -17,7 +17,7 @@ class SAT:
             return PropVariable("t{}".format(counter)), counter + 1
 
         # work for each node
-        def helper(node: PropNode, counter: int):
+        def helper(node: PropNode, counter: int) -> (PropVariable, int):
             if isinstance(node, PropVariable) or isinstance(node, PropConstant):
                 self.original_vars.add(node)
                 return node, counter
@@ -39,7 +39,7 @@ class SAT:
                 self.constraints.append([a, PropNot(p)])
                 self.constraints.append([a, PropNot(q)])
             else:
-                print("-----------------------------------")
+                raise Exception("invalid input node")
 
             return a, counter
 
@@ -49,12 +49,12 @@ class SAT:
     # update inputs to the SAT solver based on self.constraints
     def prepare_solver(self):
         # return the positive literal
-        def pos_lit(lit):
+        def to_positive_literal(lit) -> PropNode:
             if isinstance(lit, PropVariable): return lit
             return PropNot(lit)
 
         self.pass_to_sat_clause = set([frozenset(c) for c in self.constraints])
-        self.pass_to_sat_var = set(reduce(lambda b, l: b.add(pos_lit(l)) or b, [l for clause in self.constraints for l in clause], set()))
+        self.pass_to_sat_var = set(reduce(lambda b, l: b.add(to_positive_literal(l)) or b, [l for clause in self.constraints for l in clause], set()))
 
     # update assignment to the original input wff
     def assign_valid(self, assignment):
@@ -78,89 +78,79 @@ class SATSolver:
         self.propagate_hist = dict()
         self.branching_cnt = 0
 
-    def solve(self):
+    def solve(self) -> dict:
         # return the positive literal
-        def pos_lit(lit):
+        def to_positive_literal(lit) -> PropNode:
             if isinstance(lit, PropVariable): return lit
             return PropNot(lit)
 
         # update the implication graph
-        def update_graph(var, clause=None):
+        def update_implication_graph(var, clause=None):
             node = self.nodes[var]
             node.value = self.M[var]
             node.level = self.curr_level
 
             if clause:
-                for v in [pos_lit(literal) for literal in clause if pos_lit(literal) != var]:
+                for v in [to_positive_literal(literal) for literal in clause if to_positive_literal(literal) != var]:
                     node.parents.append(self.nodes[v])
                     self.nodes[v].children.append(node)
                 node.clause = clause
 
         # performing unit propagation rule
-        def unit_propagate():
-            def compute_value(literal):
-                value = self.M[pos_lit(literal)]
+        def unit_propagate() -> frozenset:
+            def compute_value(literal) -> bool:
+                value = self.M[to_positive_literal(literal)]
                 return value if value == None else value ^ (isinstance(literal, PropFunction))
 
             while True:
-                propagate_queue = deque()
-                for clause in [x for x in self.delta.union(self.learnts)]:
+                propagate_deque = deque()
+                self.delta.union(self.learnts)
+                for clause in [x for x in self.delta]:
                     values = list(map(compute_value, clause))
-                    clause_val = None if None in values else max(values)
-                    if clause_val == True:
-                        continue
-                    if clause_val == False:
-                        return clause
+                    val = None if None in values else max(values)
+                    if val == True: continue
+                    if val == False: return clause
                     else:
-                        values, unassigned = [], None
+                        values, unassigned_lit = [], None
 
                         for literal in clause:
-                            value = compute_value(literal)
-                            values.append(value)
-                            unassigned = literal if value == None else unassigned
+                            values.append(compute_value(literal))
+                            unassigned_lit = literal if values[-1] == None else unassigned_lit
 
-                        is_unit, unit_lit = ((values.count(False) == len(clause) - 1 and values.count(None) == 1) or (len(clause) == 1 and values.count(None) == 1)), unassigned
-                        if not is_unit: continue
-                        prop_pair = (unit_lit, clause)
-                        if prop_pair not in propagate_queue:
-                            propagate_queue.append(prop_pair)
-                if not propagate_queue: return None
+                        if not ((values.count(False) == len(clause) - 1 and values.count(None) == 1) or (len(clause) == 1 and values.count(None) == 1)): continue
+                        if (unassigned_lit, clause) not in propagate_deque: propagate_deque.append((unassigned_lit, clause))
+                if not propagate_deque: return None
 
-                for prop_lit, clause in propagate_queue:
-                    prop_var = pos_lit(prop_lit)
-                    self.M[prop_var] = True if isinstance(prop_lit, PropVariable) else False
-                    update_graph(prop_var, clause=clause)
-                    if self.curr_level in self.propagate_hist.keys(): self.propagate_hist[self.curr_level].append(prop_lit)
+                for propagate_lit, clause in propagate_deque:
+                    propagate_var = to_positive_literal(propagate_lit)
+                    self.M[propagate_var] = True if isinstance(propagate_lit, PropVariable) else False
+                    update_implication_graph(propagate_var, clause)
+                    if self.curr_level in self.propagate_hist.keys(): self.propagate_hist[self.curr_level].append(propagate_lit)
 
         # find cause of the conflict
-        def conflict(conflict_clause):
+        def explain(conflict_clause) -> (int, frozenset):
             if self.curr_level == 0: return -1, None
 
-            assign_history = [self.branching_hist[self.curr_level]] + list(self.propagate_hist[self.curr_level])
-            pool_lits, done_lits, curr_level_lits, prev_level_lits = conflict_clause, set(), set(), set()
+            literal_backups, literal_decided, literal_curr_lvl, literals_prev_lvls = conflict_clause, set(), set(), set()
 
             while True:
-                for lit in pool_lits:
-                    if self.nodes[pos_lit(lit)].level == self.curr_level: curr_level_lits.add(lit)
-                    else: prev_level_lits.add(lit)
+                for lit in literal_backups:
+                    if self.nodes[to_positive_literal(lit)].level == self.curr_level: literal_curr_lvl.add(lit)
+                    else: literals_prev_lvls.add(lit)
 
-                if len(curr_level_lits) == 1: break
+                if len(literal_curr_lvl) == 1: break
 
-                last_assigned, others = None, None
-                for v in reversed(assign_history):
+                for v in reversed([self.branching_hist[self.curr_level]] + list(self.propagate_hist[self.curr_level])):
                     if v in clause or PropNot(v) in clause:
-                        last_assigned, others = v, [x for x in clause if pos_lit(x) != pos_lit(v)]
+                        literal_decided.add(to_positive_literal(v))
+                        pool_clause = self.nodes[to_positive_literal(v)].clause
+                        literal_curr_lvl = set([x for x in clause if to_positive_literal(x) != to_positive_literal(v)])
+                        literal_backups = [l for l in pool_clause if to_positive_literal(l) not in literal_decided] if pool_clause is not None else []
                         break
 
-                done_lits.add(pos_lit(last_assigned))
-                curr_level_lits = set(others)
+            learnt = frozenset([l for l in literal_curr_lvl.union(literals_prev_lvls)])
 
-                pool_clause = self.nodes[pos_lit(last_assigned)].clause
-                pool_lits = [l for l in pool_clause if pos_lit(l) not in done_lits] if pool_clause is not None else []
-
-            learnt = frozenset([l for l in curr_level_lits.union(prev_level_lits)])
-
-            if prev_level_lits: level = max([self.nodes[pos_lit(x)].level for x in prev_level_lits])
+            if literals_prev_lvls: level = max([self.nodes[to_positive_literal(x)].level for x in literals_prev_lvls])
             else: level = self.curr_level - 1
 
             return level, learnt
@@ -173,8 +163,7 @@ class SATSolver:
 
             self.branching_vars = set([var for var in self.vars if (self.M[var] != None and len(self.nodes[var].parents) == 0)])
 
-            levels = list(self.propagate_hist.keys())
-            for k in levels:
+            for k in self.propagate_hist.keys():
                 if k <= level: continue
                 del self.branching_hist[k]
                 del self.propagate_hist[k]
@@ -183,8 +172,8 @@ class SATSolver:
         while not (all(var in self.M for var in self.vars) and not any(var for var in self.vars if self.M[var] == None)):
             conflict_clause = unit_propagate()
             if conflict_clause is not None:
-                lvl, learnt = conflict(conflict_clause)
-                if lvl < 0: return False
+                lvl, learnt = explain(conflict_clause)
+                if lvl < 0: return None
                 self.learnts.add(learnt)
                 backjump(lvl)
                 self.curr_level = lvl
@@ -193,20 +182,55 @@ class SATSolver:
             else:
                 self.curr_level += 1
                 self.branching_cnt += 1
-                bt_var, bt_val = next(filter(lambda v: v in self.M and self.M[v] == None, self.vars)), True
-                self.M[bt_var] = bt_val
-                self.branching_vars.add(bt_var)
-                self.branching_hist[self.curr_level], self.propagate_hist[self.curr_level] = bt_var, deque()
-                update_graph(bt_var)
+                backjump_var = next(filter(lambda v: v in self.M and self.M[v] == None, self.vars))
+                self.M[backjump_var] = True
+                self.branching_vars.add(backjump_var)
+                self.branching_hist[self.curr_level], self.propagate_hist[self.curr_level] = backjump_var, deque()
+                update_implication_graph(backjump_var)
         return self.M
 
 if __name__ == "__main__":
     a, b = PropVariable("a"), PropVariable("b")
-    c = PropNot(PropAnd(a, b))
 
+    c = PropNot(PropAnd(a, b))
     s = SAT(c)
     s.wff_to_CNF()
-    print(s.constraints)
+    s.prepare_solver()
+    solver = SATSolver(s.pass_to_sat_clause, s.pass_to_sat_var)
+    assignment = solver.solve()
+    s.assign_valid(assignment)
+    print(s.assign)
+
+    c = PropAnd(a, b)
+    s = SAT(c)
+    s.wff_to_CNF()
+    s.prepare_solver()
+    solver = SATSolver(s.pass_to_sat_clause, s.pass_to_sat_var)
+    assignment = solver.solve()
+    s.assign_valid(assignment)
+    print(s.assign)
+
+    c = PropOr(a, b)
+    s = SAT(c)
+    s.wff_to_CNF()
+    s.prepare_solver()
+    solver = SATSolver(s.pass_to_sat_clause, s.pass_to_sat_var)
+    assignment = solver.solve()
+    s.assign_valid(assignment)
+    print(s.assign)
+
+    c = PropOr(a, b)
+    s = SAT(PropNot(c))
+    s.wff_to_CNF()
+    s.prepare_solver()
+    solver = SATSolver(s.pass_to_sat_clause, s.pass_to_sat_var)
+    assignment = solver.solve()
+    s.assign_valid(assignment)
+    print(s.assign)
+
+    c = PropOr(a, b)
+    s = SAT(PropAnd(PropNot(c), c))
+    s.wff_to_CNF()
     s.prepare_solver()
     solver = SATSolver(s.pass_to_sat_clause, s.pass_to_sat_var)
     assignment = solver.solve()
