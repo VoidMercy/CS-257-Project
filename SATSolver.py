@@ -5,12 +5,10 @@ class SAT:
     def __init__(self, wff: PropNode):
         self.wff = wff
         self.constraints = []
-        self.match = set()
         self.original_vars = set()
-        self.sat_vars = set()
-        self.pass_to_sat = set()
-        self.assign = dict()
         self.pass_to_sat_var = set()
+        self.pass_to_sat_clause = set()
+        self.assign = dict()
 
     # modify self.constraints directly
     def wff_to_CNF(self):
@@ -50,21 +48,13 @@ class SAT:
 
     # update inputs to the SAT solver based on self.constraints
     def prepare_solver(self):
-        for clause in self.constraints:
-            for l in clause:
-                if isinstance(l, PropVariable): self.sat_vars.add(l)
-                else: self.sat_vars.add(PropNot(l))
-        d = dict(zip(list(self.sat_vars), [i+1 for i in range(len(self.sat_vars))]))
-        assert 0 not in d.values()
-        for clause in self.constraints:
-            c = set()
-            for l in clause:
-                if isinstance(l, PropVariable): c.add(d[l])
-                else: c.add(-1 * d[PropNot(l)])
-            self.pass_to_sat.add(frozenset(c))
+        # return the positive literal
+        def pos_lit(lit):
+            if isinstance(lit, PropVariable): return lit
+            return PropNot(lit)
 
-        self.pass_to_sat_var = set(d.values())
-        self.match = dict([(v, k) for k, v in d.items() if k in self.original_vars])
+        self.pass_to_sat_clause = set([frozenset(c) for c in self.constraints])
+        self.pass_to_sat_var = set(reduce(lambda b, l: b.add(pos_lit(l)) or b, [l for clause in self.constraints for l in clause], set()))
 
     # update assignment to the original input wff
     def assign_valid(self, assignment):
@@ -72,8 +62,8 @@ class SAT:
             self.assign = None
             return
         for atom, val in assignment.items():
-            if atom in self.match.keys():
-                self.assign[self.match[atom]] = val
+            if atom in self.original_vars:
+                self.assign[atom] = val
 
 class SATSolver:
     def __init__(self, delta, vars):
@@ -89,6 +79,11 @@ class SATSolver:
         self.branching_cnt = 0
 
     def solve(self):
+        # return the positive literal
+        def pos_lit(lit):
+            if isinstance(lit, PropVariable): return lit
+            return PropNot(lit)
+
         # update the implication graph
         def update_graph(var, clause=None):
             node = self.nodes[var]
@@ -96,7 +91,7 @@ class SATSolver:
             node.level = self.curr_level
 
             if clause:
-                for v in [abs(literal) for literal in clause if abs(literal) != var]:
+                for v in [pos_lit(literal) for literal in clause if pos_lit(literal) != var]:
                     node.parents.append(self.nodes[v])
                     self.nodes[v].children.append(node)
                 node.clause = clause
@@ -104,8 +99,8 @@ class SATSolver:
         # performing unit propagation rule
         def unit_propagate():
             def compute_value(literal):
-                value = self.M[abs(literal)]
-                return value if value == None else value ^ (literal < 0)
+                value = self.M[pos_lit(literal)]
+                return value if value == None else value ^ (isinstance(literal, PropFunction))
 
             def compute_clause(clause):
                 values = list(map(compute_value, clause))
@@ -140,17 +135,17 @@ class SATSolver:
                 if not propagate_queue: return None
 
                 for prop_lit, clause in propagate_queue:
-                    prop_var = abs(prop_lit)
-                    self.M[prop_var] = True if prop_lit > 0 else False
+                    prop_var = pos_lit(prop_lit)
+                    self.M[prop_var] = True if isinstance(prop_lit, PropVariable) else False
                     update_graph(prop_var, clause=clause)
                     if self.curr_level in self.propagate_hist.keys(): self.propagate_hist[self.curr_level].append(prop_lit)
 
         # find cause of the conflict
-        def conflict_analyze(conflict_clause):
+        def conflict(conflict_clause):
             def next_recent_assigned(clause):
                 for v in reversed(assign_history):
-                    if v in clause or -v in clause:
-                        return v, [x for x in clause if abs(x) != abs(v)]
+                    if v in clause or PropNot(v) in clause:
+                        return v, [x for x in clause if pos_lit(x) != pos_lit(v)]
 
             if self.curr_level == 0: return -1, None
 
@@ -160,28 +155,28 @@ class SATSolver:
 
             while True:
                 for lit in pool_lits:
-                    if self.nodes[abs(lit)].level == self.curr_level: curr_level_lits.add(lit)
+                    if self.nodes[pos_lit(lit)].level == self.curr_level: curr_level_lits.add(lit)
                     else: prev_level_lits.add(lit)
 
                 if len(curr_level_lits) == 1: break
 
                 last_assigned, others = next_recent_assigned(curr_level_lits)
 
-                done_lits.add(abs(last_assigned))
+                done_lits.add(pos_lit(last_assigned))
                 curr_level_lits = set(others)
 
-                pool_clause = self.nodes[abs(last_assigned)].clause
-                pool_lits = [l for l in pool_clause if abs(l) not in done_lits] if pool_clause is not None else []
+                pool_clause = self.nodes[pos_lit(last_assigned)].clause
+                pool_lits = [l for l in pool_clause if pos_lit(l) not in done_lits] if pool_clause is not None else []
 
             learnt = frozenset([l for l in curr_level_lits.union(prev_level_lits)])
 
-            if prev_level_lits: level = max([self.nodes[abs(x)].level for x in prev_level_lits])
+            if prev_level_lits: level = max([self.nodes[pos_lit(x)].level for x in prev_level_lits])
             else: level = self.curr_level - 1
 
             return level, learnt
 
-        # backtracking to the cause and reassign
-        def backtrack(level):
+        # backjumping to the cause and reassign
+        def backjump(level):
             for var, node in self.nodes.items():
                 if node.level <= level: node.children[:] = [child for child in node.children if child.level <= level]
                 else: node.value, node.level, node.parents, node.children, node.clause, self.M[node.variable] = None, -1, [], [], None, None
@@ -198,10 +193,10 @@ class SATSolver:
         while not (all(var in self.M for var in self.vars) and not any(var for var in self.vars if self.M[var] == None)):
             conflict_clause = unit_propagate()
             if conflict_clause is not None:
-                lvl, learnt = conflict_analyze(conflict_clause)
+                lvl, learnt = conflict(conflict_clause)
                 if lvl < 0: return False
                 self.learnts.add(learnt)
-                backtrack(lvl)
+                backjump(lvl)
                 self.curr_level = lvl
             elif (all(var in self.M for var in self.vars) and not any(var for var in self.vars if self.M[var] == None)):
                 break
@@ -218,12 +213,12 @@ class SATSolver:
 if __name__ == "__main__":
     a, b = PropVariable("a"), PropVariable("b")
     c = PropNot(PropAnd(a, b))
+
     s = SAT(c)
     s.wff_to_CNF()
     print(s.constraints)
     s.prepare_solver()
-    solver = SATSolver(s.pass_to_sat, s.pass_to_sat_var)
+    solver = SATSolver(s.pass_to_sat_clause, s.pass_to_sat_var)
     assignment = solver.solve()
-    print(s.match)
     s.assign_valid(assignment)
     print(s.assign)

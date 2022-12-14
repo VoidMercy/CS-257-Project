@@ -6,6 +6,7 @@ from PropNode import *
 from typing import List, Tuple
 from functools import reduce
 from SATSolver import *
+import time
 
 sys.setrecursionlimit(200000)
 
@@ -182,7 +183,7 @@ class Solver:
 		s = SAT(wff)
 		s.wff_to_CNF()
 		s.prepare_solver()
-		solver = SATSolver(s.pass_to_sat, s.pass_to_sat_var)
+		solver = SATSolver(s.pass_to_sat_clause, s.pass_to_sat_var)
 		assignment = solver.solve()
 		s.assign_valid(assignment)
 		res = s.assign
@@ -202,13 +203,6 @@ if __name__ == "__main__":
 	a = BitVec("A", 5)
 	b = BitVec("B", 5)
 	c = BitVec("C", 5)
-	s = Solver()
-
-	s.add(BitVecVal(5, 5) & a == BitVecVal(1, 5))
-	model = s.solve()
-	print("z3, Model:", model)
-	model = s.solve(1)
-	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(BitVecVal(0, 5) | a == BitVecVal(3, 5))
@@ -252,7 +246,16 @@ if __name__ == "__main__":
 	s = Solver()
 	left = a & BitVecVal(0b11110, 5) == BitVecVal(0b10100, 5)
 	right = a & BitVecVal(0b11111, 5) == BitVecVal(0b01101, 5)
-	s.add(Or(left, right))
+	s.add(left)
+	model = s.solve()
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
+
+	s = Solver()
+	left = a & BitVecVal(0b11110, 5) == BitVecVal(0b10100, 5)
+	right = a & BitVecVal(0b11111, 5) == BitVecVal(0b01101, 5)
+	s.add(right)
 	model = s.solve()
 	print("z3, Model:", model)
 	model = s.solve(1)
@@ -260,20 +263,12 @@ if __name__ == "__main__":
 
 	s = Solver()
 	left = a & BitVecVal(0b11111, 5) == BitVecVal(0b00000, 5)
-	s.add(Not(left))
+	s.add(left)
 	model = s.solve()
 	print("z3, Model:", model)
 	model = s.solve(1)
 	print("sat, Model:", model, "\n")
 
-	s = Solver()
-	left = Extract(a, 2, 0) == BitVecVal(0b101, 3)
-	right = Extract(a, 4, 3) == BitVecVal(0b01, 2)
-	s.add(And(left, right))
-	model = s.solve()
-	print("z3, Model:", model)
-	model = s.solve(1)
-	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add(Concat(a, b) == BitVecVal(0b1100110010, 10))
@@ -301,18 +296,16 @@ if __name__ == "__main__":
 	s = Solver()
 	s.add((a << BitVecVal(0b00010, 5)) == BitVecVal(0b00100, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	s.add((a >> BitVecVal(0b00100, 5)) == BitVecVal(0b00001, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
-
-	s = Solver()
-	a = BitVec("A", 32)
-	s.add(a * a == BitVecVal(169, 32))
-	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	a = BitVec("A", 5)
@@ -320,7 +313,9 @@ if __name__ == "__main__":
 	s.add(b == (a < BitVecVal(3, 5)))
 	s.add(a == BitVecVal(1, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	a = BitVec("A", 5)
@@ -328,7 +323,9 @@ if __name__ == "__main__":
 	s.add(b == (a > BitVecVal(3, 5)))
 	s.add(a == BitVecVal(4, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
 	a = BitVec("A", 5)
@@ -336,12 +333,8 @@ if __name__ == "__main__":
 	s.add(b == (a >= BitVecVal(3, 5)))
 	s.add(a == BitVecVal(2, 5))
 	model = s.solve()
-	print("Model:", model, "\n")
+	print("z3, Model:", model)
+	model = s.solve(1)
+	print("sat, Model:", model, "\n")
 
 	s = Solver()
-	a = BitVec("A", 5)
-	b = BitVec("B", 1)
-	s.add(b == (a <= BitVecVal(3, 5)))
-	s.add(a == BitVecVal(4, 5))
-	model = s.solve()
-	print("Model:", model, "\n")
